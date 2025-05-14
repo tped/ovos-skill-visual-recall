@@ -1,1 +1,53 @@
-{}
+{
+    "title": "",
+    "url": "https://github.com/tped/ovos-skill-visual-recall",
+    "summary": "",
+    "short_description": null,
+    "description": "Part of a larger project - may or may not be ov use to others - complex",
+    "examples": [
+        "Show me",
+        "<more>"
+    ],
+    "desktopFile": false,
+    "warning": "",
+    "systemDeps": false,
+    "requirements": {
+        "python": [
+            "ovos-bus-client",
+            "ovos-plugin-manager",
+            "ovos-utils",
+            "ovos-workshop",
+            "ovos_workshop~=3.3.5",
+            "pandas~=2.2.3",
+            "setuptools~=68.2.0"
+        ],
+        "system": {},
+        "skill": []
+    },
+    "incompatible_skills": [],
+    "platforms": [
+        "i386",
+        "x86_64",
+        "ia64",
+        "arm64",
+        "arm"
+    ],
+    "branch": "master",
+    "license": "Unknown",
+    "icon": "",
+    "category": "TODO:",
+    "categories": [
+        "TODO:"
+    ],
+    "tags": [
+        "ovos skill"
+    ],
+    "credits": [
+        "tped",
+        "(@githubUsername)"
+    ],
+    "skillname": "ovos-skill-visual-recall",
+    "authorname": "tped",
+    "foldername": null,
+    "ovosskill": "MeePi Visual Recall - Images, videos maybe more"
+}
