@@ -1,20 +1,19 @@
 # OVOSSkill
 
-Introductory Skill so that Skill Authors can see how an OVOS Skill is put together
+MeePi Visual Recall - Images, videos maybe more 
 
 ## About
 
-Information about your skill
+Part of a larger project - may or may not be ov use to others - complex
 
 ## Examples
 
-- "Hello world"
-- "How are you?"
-- "Thank you"
+- "Show me"
+- <more>
 
 ## Credits
 
-authorName (@githubUsername)
+tped (@githubUsername)
 
 ## Category
 

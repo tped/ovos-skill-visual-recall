@@ -3,8 +3,8 @@ from setuptools import setup
 from os import walk, path
 
 BASEDIR = path.abspath(path.dirname(__file__))
-URL = "TODO: Add 'repositoryUrl' to .projenrc.json and run pj"
-SKILL_CLAZZ = "TODO: Add 'skillClass' to .projenrc.json and run pj"  # needs to match __init__.py class name
+URL = "https://github.com/tped/ovos-skill-visual-recall"
+SKILL_CLAZZ = "VisualRecallSkill"  # needs to match __init__.py class name
 PYPI_NAME = "ovos-skill-visual-recall"  # pip install PYPI_NAME
 
 # below derived from github url to ensure standard skill_id
@@ -68,8 +68,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url=URL,
-    author="TODO: Add 'author' to .projenrc.json and run pj",
-    author_email="TODO: Add 'authorAddress' to .projenrc.json and run pj",
+    author="Tom Pedersen",
+    author_email="tom@tpedersen.net",
     license="# TODO: Add 'license' to .projenrc.json and run pj",
     package_dir={SKILL_PKG: "src"},
     package_data={SKILL_PKG: find_resource_files()},

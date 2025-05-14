@@ -1,4 +1,9 @@
 {
   "type": "@mikejgray/ovos-skill-projen.OVOSSkillProject",
-  "name": "ovos-skill-visual-recall"
+  "name": "ovos-skill-visual-recall",
+  "author": "Tom Pedersen",
+  "authorAddress": "tom@tpedersen.net",
+  "authorHandle": "tped",
+  "repositoryUrl": "https://github.com/tped/ovos-skill-visual-recall",
+  "skillClass": "VisualRecallSkill"
 }
