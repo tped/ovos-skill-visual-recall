@@ -90,9 +90,16 @@ class VisualRecallSkill(OVOSSkill):
             self.speak(f"I found the memory folder, but no image to show for {memory_name}.")
 
     def find_matching_folder(self, memory_name):
+        target_name = memory_name.lower().replace(" ", "_")
         for folder_name in os.listdir(self.media_folder):
-            if memory_name.lower().replace(" ", "_") in folder_name.lower():
+            if folder_name.lower() == target_name:
                 return os.path.join(self.media_folder, folder_name)
+
+        # Optional: fallback to partial match
+        for folder_name in os.listdir(self.media_folder):
+            if target_name in folder_name.lower():
+                return os.path.join(self.media_folder, folder_name)
+
         return None
 
     def stop(self):
