@@ -4,11 +4,11 @@ from ovos_workshop.decorators import intent_handler
 from ovos_workshop.skills import OVOSSkill
 
 import os
-import pandas as pd
+import json
 
 # Populate settings.json with default values, do so here
 DEFAULT_SETTINGS = {
-    "original_data_path": "/home/ovos/NTR-Data/MeePiMemories.csv",
+    "memories_data_path": "/home/ovos/NTR-Data/MeePiMemoryBank.json",
     "media_folder": "/home/ovos/MeePi_Media",
 }
 
@@ -20,18 +20,20 @@ class VisualRecallSkill(OVOSSkill):
         self.learning = True
 
         # Load settings from self.settings
-        self.original_data_path = self.settings.get("original_data_path")
+        self.memories_data_path = self.settings.get("memories_data_path")
         self.media_folder = self.settings.get("media_folder")
 
         self.enabled = True  # an optimist!
 
-        # Initialize with paths to embeddings, memories and media.
+        # Initialize with paths to memories and media.
 
         try:
-            self.original_data = pd.read_csv(self.original_data_path)
+            with open(self.memories_data_path, 'r', encoding='utf-8') as f:
+                self.memory_data = json.load(f)
+            self.log.info(f"Loaded {len(self.memory_data)} memories from JSON.")
         except Exception as e:
-            self.log.error(f"Failed to load original data: {e}")
-            self.original_data = None
+            self.log.error(f"Failed to load memory JSON: {e}")
+            self.memory_data = None
             self.enabled = False
 
         if not os.path.isdir(self.media_folder):
@@ -43,7 +45,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("error_initialization")
         else:
-            self.speak("Memory Palace is Alive - Step 1 - Show Cover")
+            self.speak("Memory Palace is Alive - Step 2 - Handle json Memory Banks")
 
     def initialize(self):
         # merge default settings
