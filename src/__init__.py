@@ -42,6 +42,8 @@ class VisualRecallSkill(OVOSSkill):
         # Notify the user if something went wrong
         if not self.enabled:
             self.speak_dialog("error_initialization")
+        else:
+            self.speak("Memory Palace is Alive - Step 1 - Show Cover")
 
     def initialize(self):
         # merge default settings
