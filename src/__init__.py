@@ -45,7 +45,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("error_initialization")
         else:
-            self.speak("Memory Palace is Alive - Step 2 - Handle json Memory Banks")
+            self.speak("Memory Palace is Alive - Step 3 - Eliminate PIP Dependencies")
 
     def initialize(self):
         # merge default settings

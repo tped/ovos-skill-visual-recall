@@ -3,8 +3,3 @@ ovos-bus-client
 ovos-workshop
 ovos-plugin-manager
 # Your requirements here
-
-
-pandas~=2.2.3
-ovos_workshop~=3.3.5
-setuptools~=68.2.0
