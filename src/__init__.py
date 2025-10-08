@@ -45,7 +45,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("error_initialization")
         else:
-            self.speak("Memory Palace is Alive - Step 3 - Eliminate PIP Dependencies")
+            self.speak("Memory Palace is Alive - Step 4 - Find and Display Cover")
 
     def initialize(self):
         # merge default settings
@@ -89,7 +89,7 @@ class VisualRecallSkill(OVOSSkill):
         cover_image = os.path.join(folder, "cover.jpg")
         if os.path.exists(cover_image):
             self.gui.show_image(cover_image, fill='PreserveAspectFit')
-            self.speak('Here is the image from my memory palace')
+            self.speak('Here is the cover image from my memory palace')
         else:
             self.speak(f"I found the memory folder, but no image to show for {memory_name}.")
 
