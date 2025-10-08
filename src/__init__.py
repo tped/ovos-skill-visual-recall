@@ -14,9 +14,9 @@ DEFAULT_SETTINGS = {
 
 
 class VisualRecallSkill(OVOSSkill):
-    def __init__(self, *args, bus=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         """ load and pre-process settings and data """
-        super().__init__(*args, bus=bus, **kwargs)
+        super().__init__(*args, **kwargs)
         self.learning = True
 
         # Load settings from self.settings
@@ -45,7 +45,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("error_initialization")
         else:
-            self.speak("Memory Palace is Alive - Step 5 - Simplified Intents")
+            self.speak("Memory Palace is Alive - Step 6 - Modern init/super")
 
     def initialize(self):
         # merge default settings
