@@ -15,9 +15,17 @@ DEFAULT_SETTINGS = {
 
 class VisualRecallSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
-        """ load and pre-process settings and data """
+        """The __init__ method is called when the Skill is first constructed.
+        Note that self.bus, self.skill_id, self.settings, and
+        other base class settings are only available after the call to super().
+        """
         super().__init__(*args, **kwargs)
         self.learning = True
+
+    def initialize(self):
+        # merge default settings
+        # self.settings is a jsondb, which extends the dict class and adds helpers like merge
+        self.settings.merge(DEFAULT_SETTINGS, new_only=True)
 
         # Load settings from self.settings
         self.memories_data_path = self.settings.get("memories_data_path")
@@ -43,14 +51,9 @@ class VisualRecallSkill(OVOSSkill):
 
         # Notify the user if something went wrong
         if not self.enabled:
-            self.speak_dialog("error_initialization")
+            self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Memory Palace is Alive - Step 6 - Modern init/super")
-
-    def initialize(self):
-        # merge default settings
-        # self.settings is a jsondb, which extends the dict class and adds helpers like merge
-        self.settings.merge(DEFAULT_SETTINGS, new_only=True)
+            self.speak("Visual Recall is Alive - Revision 7 - Everything in Initialize")
 
     @classproperty
     def runtime_requirements(self):
