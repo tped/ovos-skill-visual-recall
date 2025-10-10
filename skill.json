@@ -1,26 +1,41 @@
 {
-    "title": "",
-    "url": "https://github.com/tped/ovos-skill-visual-recall",
-    "summary": "",
-    "short_description": null,
     "description": "Part of a larger project - may or may not be ov use to others - complex",
     "examples": [
         "Show me",
         "<more>"
     ],
-    "desktopFile": false,
-    "warning": "",
-    "systemDeps": false,
+    "credits": [
+        "Tom Pedersen"
+    ],
+    "categories": [
+        "TODO:"
+    ],
+    "tags": "ovos skill voice assistant",
+    "category": "TODO:",
+    "package_name": "ovos-skill-visual-recall",
+    "pip_spec": "ovos-skill-visual-recall",
+    "license": "# TODO: Add 'license' to .projenrc.json and run pj",
+    "author": "Tom Pedersen",
+    "version": "0.0.1",
+    "url": "https://github.com/tped/ovos-skill-visual-recall",
+    "skill_id": "ovos-skill-visual-recall.tped=ovos_skill_visual_recall:VisualRecallSkill",
+    "skillname": "ovos-skill-visual-recall",
+    "authorname": "tped",
+    "name": "ovos-skill-visual-recall",
+    "title": "ovos-skill-visual-recall",
     "requirements": {
         "python": [
-            "ovos-bus-client",
-            "ovos-plugin-manager",
             "ovos-utils",
-            "ovos-workshop"
+            "ovos-bus-client",
+            "ovos-workshop",
+            "ovos-plugin-manager"
         ],
         "system": {},
         "skill": []
     },
+    "desktopFile": false,
+    "warning": "",
+    "systemDeps": false,
     "incompatible_skills": [],
     "platforms": [
         "i386",
@@ -30,21 +45,6 @@
         "arm"
     ],
     "branch": "master",
-    "license": "Unknown",
-    "icon": "",
-    "category": "TODO:",
-    "categories": [
-        "TODO:"
-    ],
-    "tags": [
-        "ovos skill"
-    ],
-    "credits": [
-        "tped",
-        "(@githubUsername)"
-    ],
-    "skillname": "ovos-skill-visual-recall",
-    "authorname": "tped",
     "foldername": null,
-    "ovosskill": "MeePi Visual Recall - Images, videos maybe more"
+    "short_description": null
 }
