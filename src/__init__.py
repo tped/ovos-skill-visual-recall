@@ -6,11 +6,13 @@ from ovos_workshop.skills import OVOSSkill
 
 import os
 import json
+import time
 
 # Populate settings.json with default values, do so here
 DEFAULT_SETTINGS = {
     "memories_data_path": "/home/ovos/NTR-Data/MeePiMemoryBank.json",
     "media_folder": "/home/ovos/MeePi_Media",
+    "display_time": 3  # default seconds per image
 }
 
 
@@ -45,6 +47,7 @@ class VisualRecallSkill(OVOSSkill):
         # Load settings from self.settings
         self.memories_data_path = self.settings.get("memories_data_path")
         self.media_folder = self.settings.get("media_folder")
+        self.display_time = self.settings.get("display_time", 3)
 
         self.enabled = True  # an optimist!
 
@@ -68,7 +71,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Visual Recall is Alive - Rev 8 - Intent and more Requirements cleanup")
+            self.speak("Visual Recall is Alive - Rev 9 - Display All images in directory")
 
     @property
     def my_setting(self):
@@ -85,17 +88,43 @@ class VisualRecallSkill(OVOSSkill):
             self.speak("I didn't catch the memory you're looking for.")
             return
 
+        self.show_memory_images(memory_name)
+
+    def show_memory_images(self, memory_name):
+        """
+        Display all images in a memory folder sequentially.
+        :param memory_name: name of the memory to recall
+        """
         folder = self.find_matching_folder(memory_name)
         if not folder:
-            self.speak(f"I couldn't find any media for {memory_name}")
+            self.speak(f"I couldn't find any media for {memory_name}.")
             return
 
-        cover_image = os.path.join(folder, "cover.jpg")
-        if os.path.exists(cover_image):
-            self.gui.show_image(cover_image, fill='PreserveAspectFit')
-            self.speak('Here is the cover image from my memory palace')
-        else:
-            self.speak(f"I found the memory folder, but no image to show for {memory_name}.")
+        # Grab all images in folder
+        images = self.get_media_files(folder)
+        if not images:
+            self.speak(f"I remember {memory_name} but have no visual memories")
+            return
+
+        # Put cover.jpg first if it exists
+        cover_path = os.path.join(folder, "cover.jpg")
+        if cover_path in images:
+            images.remove(cover_path)
+            images.insert(0, cover_path)
+
+        # Speak how many images are available
+        self.speak(f"I found {len(images)} images from {memory_name}.")
+        self.log.info(f"Displaying images from {folder}: {images}")
+
+        # Sequentially display images
+        for idx, img_path in enumerate(images, start=1):
+            if not os.path.exists(img_path):
+                continue
+            self.log.info(f"Displaying image {idx}/{len(images)}: {img_path}")
+            self.gui.show_image(img_path, fill='PreserveAspectFit')
+            time.sleep(self.display_time)
+
+        self.speak("That's all the images I found.")
 
     def find_matching_folder(self, memory_name):
         target_name = memory_name.lower().replace(" ", "_")
@@ -109,6 +138,14 @@ class VisualRecallSkill(OVOSSkill):
                 return os.path.join(self.media_folder, folder_name)
 
         return None
+
+    def get_media_files(self, folder):
+        valid_ext = ('.jpg', '.jpeg', '.png', '.gif')
+        return [
+            os.path.join(folder, f)
+            for f in sorted(os.listdir(folder))
+            if f.lower().endswith(valid_ext)
+        ]
 
     def stop(self):
         """Optional action to take when "stop" is requested by the user.
