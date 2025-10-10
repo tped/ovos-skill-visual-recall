@@ -1,6 +1,7 @@
 from ovos_utils import classproperty
 from ovos_utils.process_utils import RuntimeRequirements
 from ovos_workshop.decorators import intent_handler
+# from ovos_workshop.intents import IntentHandler # Uncomment to use Adapt intents
 from ovos_workshop.skills import OVOSSkill
 
 import os
@@ -13,7 +14,7 @@ DEFAULT_SETTINGS = {
 }
 
 
-class VisualRecallSkill(OVOSSkill):
+class VisualRecall(OVOSSkill):
     def __init__(self, *args, **kwargs):
         """The __init__ method is called when the Skill is first constructed.
         Note that self.bus, self.skill_id, self.settings, and
@@ -21,6 +22,20 @@ class VisualRecallSkill(OVOSSkill):
         """
         super().__init__(*args, **kwargs)
         self.learning = True
+
+    @classproperty
+    def runtime_requirements(self):
+        return RuntimeRequirements(
+            internet_before_load=False,
+            network_before_load=False,
+            gui_before_load=True,
+            requires_internet=False,
+            requires_network=False,
+            requires_gui=True,
+            no_internet_fallback=False,
+            no_network_fallback=False,
+            no_gui_fallback=True,
+        )
 
     def initialize(self):
         # merge default settings
@@ -53,21 +68,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Visual Recall is Alive - Revision 7 - Everything in Initialize")
-
-    @classproperty
-    def runtime_requirements(self):
-        return RuntimeRequirements(
-            internet_before_load=False,
-            network_before_load=False,
-            gui_before_load=False,
-            requires_internet=False,
-            requires_network=False,
-            requires_gui=False,
-            no_internet_fallback=True,
-            no_network_fallback=True,
-            no_gui_fallback=True,
-        )
+            self.speak("Visual Recall is Alive - Rev 8 - Intent and more Requirements cleanup")
 
     @property
     def my_setting(self):
@@ -77,9 +78,9 @@ class VisualRecallSkill(OVOSSkill):
         """
         return self.settings.get("my_setting", "default_value")
 
-    @intent_handler("ShowMe.intent")
-    def handle_show_me_intent(self, message):
-        memory_name = message.data.get("memory_name")
+    @intent_handler("MemoryPalace.intent")
+    def handle_memory_palace_intent(self, message):
+        memory_name = message.data.get("query")
         if not memory_name:
             self.speak("I didn't catch the memory you're looking for.")
             return

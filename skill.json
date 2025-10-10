@@ -16,10 +16,7 @@
             "ovos-bus-client",
             "ovos-plugin-manager",
             "ovos-utils",
-            "ovos-workshop",
-            "ovos_workshop~=3.3.5",
-            "pandas~=2.2.3",
-            "setuptools~=68.2.0"
+            "ovos-workshop"
         ],
         "system": {},
         "skill": []
