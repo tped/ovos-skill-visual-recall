@@ -14,7 +14,7 @@ DEFAULT_SETTINGS = {
 }
 
 
-class VisualRecall(OVOSSkill):
+class VisualRecallSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
         """The __init__ method is called when the Skill is first constructed.
         Note that self.bus, self.skill_id, self.settings, and
