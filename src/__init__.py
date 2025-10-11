@@ -71,7 +71,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Visual Recall is Alive - Rev 9 - Display All images in directory")
+            self.speak("Visual Recall is Alive - Phase 1/0 - Display images in directory")
 
     @property
     def my_setting(self):
@@ -106,11 +106,11 @@ class VisualRecallSkill(OVOSSkill):
             self.speak(f"I remember {memory_name} but have no visual memories")
             return
 
-        # Put cover.jpg first if it exists
-        cover_path = os.path.join(folder, "cover.jpg")
-        if cover_path in images:
-            images.remove(cover_path)
-            images.insert(0, cover_path)
+        # Remove cover image regardless of extension
+        images = [
+            img for img in images
+            if os.path.splitext(os.path.basename(img).lower())[0] != "cover"
+        ]
 
         # Speak how many images are available
         self.speak(f"I found {len(images)} images from {memory_name}.")
