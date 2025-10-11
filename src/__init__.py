@@ -71,7 +71,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Visual Recall is Alive - Phase 1/0 - Display images in directory")
+            self.speak("Visual Recall is Alive - Phase 1/2 - Dialog Displays")
 
     @property
     def my_setting(self):
@@ -113,9 +113,15 @@ class VisualRecallSkill(OVOSSkill):
         ]
 
         # Speak how many images are available
-        self.speak(f"I found {len(images)} images from {memory_name}.")
+        image_count = len(images)
+        # self.speak(f"I found {len(images)} images from {memory_name}.")
         self.log.info(f"Displaying images from {folder}: {images}")
 
+        if image_count == 1:
+            self.speak_dialog("show_image", {"memory_name": memory_name})
+        else:
+            self.speak_dialog("show_all_images",
+                              {"memory_name": memory_name, "count": image_count})
         # Sequentially display images
         for idx, img_path in enumerate(images, start=1):
             if not os.path.exists(img_path):
