@@ -71,7 +71,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Visual Recall is Alive - Phase 1/2 - Dialog Displays")
+            self.speak("Visual Recall is Alive - Phase 1/3 - Chatter between images")
 
     @property
     def my_setting(self):
@@ -103,7 +103,7 @@ class VisualRecallSkill(OVOSSkill):
         # Grab all images in folder
         images = self.get_media_files(folder)
         if not images:
-            self.speak(f"I remember {memory_name} but have no visual memories")
+            self.speak_dialog("no_image_found", {"memory_name": memory_name})
             return
 
         # Remove cover image regardless of extension
@@ -130,7 +130,14 @@ class VisualRecallSkill(OVOSSkill):
             self.gui.show_image(img_path, fill='PreserveAspectFit')
             time.sleep(self.display_time)
 
-        self.speak("That's all the images I found.")
+            # Add variety during sequence
+            if image_count > 1 and idx < image_count:
+                # Randomly add some chatter every few images
+                if idx % 2 == 0 or image_count <= 4:
+                    self.speak_dialog("heres_another_image")
+                    time.sleep(0.5)
+
+        self.speak_dialog("end_of_images", {"memory_name": memory_name})
 
     def find_matching_folder(self, memory_name):
         target_name = memory_name.lower().replace(" ", "_")
