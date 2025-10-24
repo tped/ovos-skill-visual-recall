@@ -133,7 +133,7 @@ class VisualRecallSkill(OVOSSkill):
                     playback=PlaybackType.VIDEO,
                     media_type=MediaType.VIDEO,
                     skill_id=self.skill_id,
-                    skill_icon=self.skill_icon or ""
+                    skill_icon=""
                 )
                 self.ocp.play([entry])
 
