@@ -3,6 +3,9 @@ from ovos_utils.process_utils import RuntimeRequirements
 from ovos_workshop.decorators import intent_handler
 # from ovos_workshop.intents import IntentHandler # Uncomment to use Adapt intents
 from ovos_workshop.skills import OVOSSkill
+# NEW imports for OCP media
+from ovos_bus_client.apis.ocp import OCPInterface
+from ovos_utils.ocp import MediaType, PlaybackType, MediaEntry
 
 import os
 import json
@@ -24,6 +27,8 @@ class VisualRecallSkill(OVOSSkill):
         """
         super().__init__(*args, **kwargs)
         self.learning = True
+        # register OCP
+        self.ocp = None
 
     @classproperty
     def runtime_requirements(self):
@@ -43,6 +48,8 @@ class VisualRecallSkill(OVOSSkill):
         # merge default settings
         # self.settings is a jsondb, which extends the dict class and adds helpers like merge
         self.settings.merge(DEFAULT_SETTINGS, new_only=True)
+
+        self.ocp = OCPInterface(self.bus)  # OCP registration
 
         # Load settings from self.settings
         self.memories_data_path = self.settings.get("memories_data_path")
@@ -71,7 +78,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Visual Recall is Alive - Phase 2/0 - Attempting to Play video")
+            self.speak("Visual Recall is Alive - Phase 2/2 - OCP for Videos and Audio")
 
     @property
     def my_setting(self):
@@ -82,34 +89,72 @@ class VisualRecallSkill(OVOSSkill):
         return self.settings.get("my_setting", "default_value")
 
     @intent_handler("MemoryPalace.intent")
-    @intent_handler("MemoryPalace.intent")
     def handle_memory_palace_intent(self, message):
         memory_name = message.data.get("query")
         if not memory_name:
             self.speak("I didn't catch the memory you're looking for.")
             return
 
-        # Show images
-        self.show_memory_images(memory_name)
-
-        # Play videos
         folder = self.find_matching_folder(memory_name)
         if not folder:
-            return  # Memory folder not found
+            self.speak(f"I couldn't find any media for {memory_name}.")
+            return
 
-        videos = self.get_video_files(folder)
-        if not videos:
-            return  # No videos to play
+        # --------- IMAGES ----------
+        images = self.get_media_files(folder)
+        # skip cover (it's a duplicate of one of the images)
+        images = [img for img in images if os.path.splitext(os.path.basename(img).lower())[0] != "cover"]
 
-        self.speak(f"I found {len(videos)} videos from {memory_name}.")
-        for vid in videos:
-            if not os.path.exists(vid):
-                self.log.warning(f"Video file missing: {vid}")
-                continue
-            self.log.info(f"Playing video: {vid}")
-            if self.gui:
-                self.gui.show_video(vid)
-            time.sleep(1)  # Optional: short pause between videos
+        if images:
+            self.speak_dialog("show_all_images", {"memory_name": memory_name, "count": len(images)})
+            for idx, img in enumerate(images, start=1):
+                if not os.path.exists(img):
+                    continue
+                self.gui.show_image(img, fill='PreserveAspectFit')
+                time.sleep(self.display_time)
+                if idx % 2 == 0 or len(images) <= 4:
+                    self.speak_dialog("heres_another_image")
+                    time.sleep(0.5)
+
+            self.speak_dialog("end_of_images", {"memory_name": memory_name})
+
+            # --- VIDEOS ---
+            video_files = self.get_video_files(folder)
+            if video_files:
+                self.speak_dialog("playing_videos", {"memory_name": memory_name})
+                for vid in video_files:
+                    if not os.path.exists(vid):
+                        continue
+                    self.log.info(f"Playing video: {vid}")
+                    # wrap in MediaEntry for OCP
+                    from ovos_utils.ocp import MediaEntry, PlaybackType, MediaType
+                    entry = MediaEntry(
+                        title=os.path.basename(vid),
+                        uri="file://" + vid,
+                        playback=PlaybackType.VIDEO,
+                        media_type=MediaType.VIDEO,
+                        skill_id=self.skill_id,
+                        skill_icon=""
+                    )
+                    self.ocp.play([entry])
+
+            audio_files = self.get_audio_files(folder)
+            if audio_files:
+                self.speak_dialog("playing_audio", {"memory_name": memory_name})
+                for aud in audio_files:
+                    if not os.path.exists(aud):
+                        continue
+                    self.log.info(f"Playing audio: {aud}")
+                    from ovos_utils.ocp import MediaEntry, PlaybackType, MediaType
+                    entry = MediaEntry(
+                        title=os.path.basename(aud),
+                        uri="file://" + aud,
+                        playback=PlaybackType.AUDIO,
+                        media_type=MediaType.MUSIC,
+                        skill_id=self.skill_id,
+                        skill_icon=""
+                    )
+                    self.ocp.play([entry])
 
     def show_memory_images(self, memory_name):
         """
@@ -173,6 +218,27 @@ class VisualRecallSkill(OVOSSkill):
 
         return None
 
+    def _file2entry(self, file_path, media_type):
+        file_path = os.path.expanduser(file_path)
+        if not file_path.startswith("file://"):
+            file_path = "file://" + file_path
+
+        if media_type == MediaType.AUDIO:
+            playback_type = PlaybackType.AUDIO
+        else:
+            playback_type = PlaybackType.VIDEO
+
+        return MediaEntry(
+            title=os.path.basename(file_path),
+            media_type=media_type,
+            playback=playback_type,
+            uri=file_path,
+            match_confidence=100,
+            skill_id=self.skill_id,
+            skill_icon="",
+            length=0
+        )
+
     def get_media_files(self, folder):
         valid_ext = ('.jpg', '.jpeg', '.png', '.gif')
         return [
@@ -182,7 +248,15 @@ class VisualRecallSkill(OVOSSkill):
         ]
 
     def get_video_files(self, folder):
-        valid_ext = ('.mp4', '.mov', '.avi', '.mkv')
+        valid_ext = ('.mp4', '.mkv', '.avi', '.mov', '.webm')
+        return [
+            os.path.join(folder, f)
+            for f in sorted(os.listdir(folder))
+            if f.lower().endswith(valid_ext)
+        ]
+
+    def get_audio_files(self, folder):
+        valid_ext = ('.mp3', '.wav', '.flac', '.m4a', '.aac')
         return [
             os.path.join(folder, f)
             for f in sorted(os.listdir(folder))
