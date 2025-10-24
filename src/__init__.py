@@ -27,8 +27,6 @@ class VisualRecallSkill(OVOSSkill):
         """
         super().__init__(*args, **kwargs)
         self.learning = True
-        # register OCP
-        self.ocp = None
 
     @classproperty
     def runtime_requirements(self):
@@ -78,7 +76,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Visual Recall is Alive - Phase 2/3 - OCP for Videos and Audio")
+            self.speak("Visual Recall is Alive - Phase 2/4 - OCP register only once")
 
     @property
     def my_setting(self):
