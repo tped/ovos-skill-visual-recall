@@ -78,7 +78,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Visual Recall is Alive - Phase 2/2 - OCP for Videos and Audio")
+            self.speak("Visual Recall is Alive - Phase 2/3 - OCP for Videos and Audio")
 
     @property
     def my_setting(self):
@@ -118,43 +118,43 @@ class VisualRecallSkill(OVOSSkill):
 
             self.speak_dialog("end_of_images", {"memory_name": memory_name})
 
-            # --- VIDEOS ---
-            video_files = self.get_video_files(folder)
-            if video_files:
-                self.speak_dialog("playing_videos", {"memory_name": memory_name})
-                for vid in video_files:
-                    if not os.path.exists(vid):
-                        continue
-                    self.log.info(f"Playing video: {vid}")
-                    # wrap in MediaEntry for OCP
-                    from ovos_utils.ocp import MediaEntry, PlaybackType, MediaType
-                    entry = MediaEntry(
-                        title=os.path.basename(vid),
-                        uri="file://" + vid,
-                        playback=PlaybackType.VIDEO,
-                        media_type=MediaType.VIDEO,
-                        skill_id=self.skill_id,
-                        skill_icon=""
-                    )
-                    self.ocp.play([entry])
+        # --- VIDEOS ---
+        videos = self.get_video_files(folder)
+        if videos:
+            self.speak_dialog("playing_videos", {"memory_name": memory_name})
+            for vid in videos:
+                if not os.path.exists(vid):
+                    continue
+                self.log.info(f"Playing video: {vid}")
+                from ovos_utils.ocp import MediaEntry, PlaybackType, MediaType
+                entry = MediaEntry(
+                    title=os.path.basename(vid),
+                    uri="file://" + vid,
+                    playback=PlaybackType.VIDEO,
+                    media_type=MediaType.VIDEO,
+                    skill_id=self.skill_id,
+                    skill_icon=self.skill_icon or ""
+                )
+                self.ocp.play([entry])
 
-            audio_files = self.get_audio_files(folder)
-            if audio_files:
-                self.speak_dialog("playing_audio", {"memory_name": memory_name})
-                for aud in audio_files:
-                    if not os.path.exists(aud):
-                        continue
-                    self.log.info(f"Playing audio: {aud}")
-                    from ovos_utils.ocp import MediaEntry, PlaybackType, MediaType
-                    entry = MediaEntry(
-                        title=os.path.basename(aud),
-                        uri="file://" + aud,
-                        playback=PlaybackType.AUDIO,
-                        media_type=MediaType.MUSIC,
-                        skill_id=self.skill_id,
-                        skill_icon=""
-                    )
-                    self.ocp.play([entry])
+        # --- AUDIO Files ---
+        audio_files = self.get_audio_files(folder)
+        if audio_files:
+            self.speak_dialog("playing_audio", {"memory_name": memory_name})
+            for aud in audio_files:
+                if not os.path.exists(aud):
+                    continue
+                self.log.info(f"Playing audio: {aud}")
+                from ovos_utils.ocp import MediaEntry, PlaybackType, MediaType
+                entry = MediaEntry(
+                    title=os.path.basename(aud),
+                    uri="file://" + aud,
+                    playback=PlaybackType.AUDIO,
+                    media_type=MediaType.MUSIC,
+                    skill_id=self.skill_id,
+                    skill_icon=""
+                )
+                self.ocp.play([entry])
 
     def show_memory_images(self, memory_name):
         """
