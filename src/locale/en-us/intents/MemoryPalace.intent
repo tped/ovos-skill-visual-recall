@@ -1,6 +1,10 @@
 Show me images (of|from) {query}
+Show images (of|from) {query}
 Show me memories (of|from) {query}
+Show memories (of|from) {query}
 Do you have any visual memories (of|from) {query}
+Do you have visual memories (of|from) {query}
 Do you have any (images|photos|videos) (of|from) {query}
+Do you have (images|photos|videos) (of|from) {query}
 Can I see images (of|from) {query}
 Can I see memories (of|from) {query}

@@ -71,7 +71,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("Visual Recall had an initialization error")
         else:
-            self.speak("Visual Recall is Alive - Phase 1/3 - Chatter between images")
+            self.speak("Visual Recall is Alive - Phase 2/0 - Attempting to Play video")
 
     @property
     def my_setting(self):
@@ -82,13 +82,34 @@ class VisualRecallSkill(OVOSSkill):
         return self.settings.get("my_setting", "default_value")
 
     @intent_handler("MemoryPalace.intent")
+    @intent_handler("MemoryPalace.intent")
     def handle_memory_palace_intent(self, message):
         memory_name = message.data.get("query")
         if not memory_name:
             self.speak("I didn't catch the memory you're looking for.")
             return
 
+        # Show images
         self.show_memory_images(memory_name)
+
+        # Play videos
+        folder = self.find_matching_folder(memory_name)
+        if not folder:
+            return  # Memory folder not found
+
+        videos = self.get_video_files(folder)
+        if not videos:
+            return  # No videos to play
+
+        self.speak(f"I found {len(videos)} videos from {memory_name}.")
+        for vid in videos:
+            if not os.path.exists(vid):
+                self.log.warning(f"Video file missing: {vid}")
+                continue
+            self.log.info(f"Playing video: {vid}")
+            if self.gui:
+                self.gui.show_video(vid)
+            time.sleep(1)  # Optional: short pause between videos
 
     def show_memory_images(self, memory_name):
         """
@@ -154,6 +175,14 @@ class VisualRecallSkill(OVOSSkill):
 
     def get_media_files(self, folder):
         valid_ext = ('.jpg', '.jpeg', '.png', '.gif')
+        return [
+            os.path.join(folder, f)
+            for f in sorted(os.listdir(folder))
+            if f.lower().endswith(valid_ext)
+        ]
+
+    def get_video_files(self, folder):
+        valid_ext = ('.mp4', '.mov', '.avi', '.mkv')
         return [
             os.path.join(folder, f)
             for f in sorted(os.listdir(folder))
