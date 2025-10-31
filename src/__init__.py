@@ -70,7 +70,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("MeePi's Visual Recall had an initialization error")
         else:
-            self.speak("MeePi's Visual Recall is ALIVE!  NEW Init Announcement")
+            self.speak("MeePi Visual Recall is ALIVE! Version 3.0. Ready to Test OCP Videos")
 
     # ----------------------
     # SETTINGS HELPERS
