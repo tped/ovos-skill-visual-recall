@@ -12,7 +12,7 @@ import time
 # Default settings
 DEFAULT_SETTINGS = {
     "memories_data_path": "/home/ovos/NTR-Data/MeePiMemoryBank.json",
-    "media_folder": "/home/ovos/MeePi_Media",
+    "media_folder": "/home/ovos/MeePi_MemoryPalace",
     "display_time": 3  # default seconds per image
 }
 
@@ -70,7 +70,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("MeePi's Visual Recall had an initialization error")
         else:
-            self.speak("MeePi Visual Recall is ALIVE! Phase 3 dot 0. Ready to Test OCP Videos")
+            self.speak("MeePi Visual Recall is ALIVE! Phase 3 dot 1. Using Memory Palace and No Videos")
 
     # ----------------------
     # SETTINGS HELPERS
@@ -106,7 +106,8 @@ class VisualRecallSkill(OVOSSkill):
                     continue
                 self.log.info(f"Playing video: {vid}")
                 entry = self._file2entry(vid, MediaType.VIDEO)
-                self.ocp.play([entry])
+                self.speak(f"I have a video memory but can't play it yet ... sorry")
+                # self.ocp.play([entry])
 
         # --------- AUDIO ----------
         audio_files = self.get_audio_files(folder)
@@ -117,7 +118,8 @@ class VisualRecallSkill(OVOSSkill):
                     continue
                 self.log.info(f"Playing audio: {aud}")
                 entry = self._file2entry(aud, MediaType.AUDIO)
-                self.ocp.play([entry])
+                self.speak(f"I have an audio memory but can't play it yet ... sorry")
+                # self.ocp.play([entry])
 
     # ----------------------
     # MEDIA DISPLAY HELPERS
