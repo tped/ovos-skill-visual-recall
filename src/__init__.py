@@ -4,6 +4,7 @@ from ovos_workshop.decorators import intent_handler
 from ovos_workshop.skills import OVOSSkill
 from ovos_bus_client.apis.ocp import OCPInterface
 from ovos_utils.ocp import MediaType, PlaybackType, MediaEntry
+from ovos_bus_client.message import Message
 
 import os
 import json
@@ -46,6 +47,9 @@ class VisualRecallSkill(OVOSSkill):
         # Register OCP
         self.ocp = OCPInterface(self.bus)
 
+        # Register event for NTR hand-offs
+        self.add_event("visual.recall.display", self.handle_display_request)
+
         # Load paths & settings
         self.memories_data_path = self.settings.get("memories_data_path")
         self.media_folder = self.settings.get("media_folder")
@@ -70,7 +74,7 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("MeePi's Visual Recall had an initialization error")
         else:
-            self.speak("MeePi Visual Recall is ALIVE! Phase 3 dot 1. Using Memory Palace and No Videos")
+            self.speak("MeePi Visual Recall is ALIVE! Version 0 dot 4. Ready for NTR Messages")
 
     # ----------------------
     # SETTINGS HELPERS
@@ -78,6 +82,21 @@ class VisualRecallSkill(OVOSSkill):
     @property
     def my_setting(self):
         return self.settings.get("my_setting", "default_value")
+
+    # -----------------------
+    # REQUEST HANDLER for NTR
+    # -----------------------
+    def handle_display_request(self, message: Message):
+        media_path = message.data.get("media_path")
+        memory_name = message.data.get("title") or "this memory"
+
+        if not media_path or not os.path.exists(media_path):
+            self.log.error(f"visual-recall: no media found at {media_path}")
+            self.speak(f"I could not find any media for {memory_name}.")
+            return
+
+        self.log.info(f"visual-recall: received request to display media for {memory_name}")
+        self._show_images(media_path, memory_name)
 
     # ----------------------
     # INTENT HANDLER
@@ -124,7 +143,7 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     # MEDIA DISPLAY HELPERS
     # ----------------------
-    def _show_images(self, folder, memory_name):
+    def _show_images(self, folder: str, memory_name: str):
         """Display all images in a memory folder sequentially with GUI release."""
         images = self.get_media_files(folder)
         if not images:
@@ -192,7 +211,8 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     # MEDIA FILE LIST HELPERS
     # ----------------------
-    def get_media_files(self, folder):
+    @staticmethod
+    def get_media_files(folder: str):
         valid_ext = ('.jpg', '.jpeg', '.png', '.gif')
         return [
             os.path.join(folder, f)
@@ -200,7 +220,8 @@ class VisualRecallSkill(OVOSSkill):
             if f.lower().endswith(valid_ext)
         ]
 
-    def get_video_files(self, folder):
+    @staticmethod
+    def get_video_files(folder: str):
         valid_ext = ('.mp4', '.mkv', '.avi', '.mov', '.webm')
         return [
             os.path.join(folder, f)
@@ -208,7 +229,8 @@ class VisualRecallSkill(OVOSSkill):
             if f.lower().endswith(valid_ext)
         ]
 
-    def get_audio_files(self, folder):
+    @staticmethod
+    def get_audio_files(folder: str):
         valid_ext = ('.mp3', '.wav', '.flac', '.m4a', '.aac')
         return [
             os.path.join(folder, f)
