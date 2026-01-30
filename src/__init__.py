@@ -196,9 +196,13 @@ class VisualRecallSkill(OVOSSkill):
             if os.path.splitext(os.path.basename(img).lower())[0] != "cover"
         ]
         image_count = len(images)
+        # Total duration = (number of images * display time) + (estimated speech time)
+        # We'll use 3 seconds as a "speech buffer" per chatter instance
+        speech_buffers = (image_count // 2) * 3
+        total_session_time = (image_count * self.display_time) + speech_buffers + 10
 
-        # --- THE FIX: SIT TIGHT COMMAND ---
-        self.gui.override_idle = True
+        # --- THE FIX: lock idle for expected duration of the show
+        self.gui.override_idle = total_session_time
         self.active_slideshow = True
 
         if image_count == 1:
@@ -211,16 +215,25 @@ class VisualRecallSkill(OVOSSkill):
             if not self.active_slideshow:
                 break
 
+            # Remaining time for this specific image's 'KeepAlive'
+            remaining_time = total_session_time - (idx * self.display_time)
+
+            self.log.info(f"Displaying {idx}/{image_count}. Lock remaining: {remaining_time}s")
+
             if not os.path.exists(img_path):
                 continue
             self.log.info(f"Displaying image {idx}/{image_count}: {img_path}")
-            self.gui.show_image(img_path, fill='PreserveAspectFit', override_idle=self.display_time + 1)
+            self.gui.show_image(img_path, fill='PreserveAspectFit', override_idle=remaining_time)
+
             time.sleep(self.display_time)
+
             # Add chatter every few images
             if image_count > 1 and idx < image_count:
                 if idx % 2 == 0 or image_count <= 4:
-                    self.speak_dialog("heres_another_image")
+                    self.speak_dialog("heres_another_image", wait=True)
                     time.sleep(0.5)
+
+        self.log.info("Slideshow finished. Cleaning up.")
 
         # Release GUI after images
         self._release_gui()
@@ -230,6 +243,9 @@ class VisualRecallSkill(OVOSSkill):
     def _release_gui(self):
         """Safely release GUI to prevent player lockout."""
         try:
+            self.active_slideshow = False
+            self.gui.override_idle = False  # Tells the bus 'I am done with the timer'
+            self.gui.remove_page("ImagePage")  # Optional: specific cleanup if needed
             self.gui.release()
         except Exception as e:
             self.log.warning(f"GUI release failed: {e}")
