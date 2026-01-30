@@ -22,7 +22,8 @@ from .version import (
 DEFAULT_SETTINGS = {
     "memories_data_path": "/home/ovos/NTR-Data/MeePiMemoryBank.json",
     "media_folder": "/home/ovos/MeePi_MemoryPalace",
-    "display_time": 3  # default seconds per image
+    "display_time": 3,  # default seconds per image,
+    "log_level": "WARNING"
 }
 
 
