@@ -5,10 +5,18 @@ from ovos_workshop.skills import OVOSSkill
 from ovos_bus_client.apis.ocp import OCPInterface
 from ovos_utils.ocp import MediaType, PlaybackType, MediaEntry
 from ovos_bus_client.message import Message
+from ovos_utils.log import LOG
 
 import os
 import json
 import time
+
+from .version import (
+    VERSION_MAJOR,
+    VERSION_MINOR,
+    VERSION_BUILD,
+    VERSION_ALPHA
+)
 
 # Default settings
 DEFAULT_SETTINGS = {
@@ -22,6 +30,15 @@ class VisualRecallSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.learning = True
+        # Initialize the flag here to keep PyCharm happy
+        self.active_slideshow = False
+        self.log_level = "INFO"
+        self.ocp = None
+        self.memories_data_path = None
+        self.media_folder = None
+        self.display_time = 3
+        self.memory_data = []
+        self.enabled = True
 
     @classproperty
     def runtime_requirements(self):
@@ -37,12 +54,34 @@ class VisualRecallSkill(OVOSSkill):
             no_gui_fallback=True,
         )
 
+    @staticmethod
+    def skill_version():
+        version_string = f"{VERSION_MAJOR}.{VERSION_MINOR}.{VERSION_BUILD}"
+        if VERSION_ALPHA and int(VERSION_ALPHA) > 0:
+            version_string += f"a{VERSION_ALPHA}"
+        return version_string
     # ----------------------
     # INITIALIZATION
     # ----------------------
+
     def initialize(self):
-        # Merge defaults
+        LOG.debug("initialize() called")
+
+        # merge default settings
+        # self.settings is a jsondb, which extends the dict class and adds helpers like merge
         self.settings.merge(DEFAULT_SETTINGS, new_only=True)
+        self.log_level = self.settings.get("log_level", "INFO")
+
+        # Speak version if log_level != INFO
+        if self.log_level.upper() != "INFO":
+            ver = self.skill_version()
+            spoken_version = ver.replace("a", " alpha ")
+            self.speak(
+                f"MeePi Visual Recall, version {spoken_version}, initialized",
+                wait=False
+            )
+
+        LOG.info(f"Visual Recall Skill version={self.skill_version()}")
 
         # Register OCP
         self.ocp = OCPInterface(self.bus)
@@ -54,6 +93,8 @@ class VisualRecallSkill(OVOSSkill):
         self.memories_data_path = self.settings.get("memories_data_path")
         self.media_folder = self.settings.get("media_folder")
         self.display_time = self.settings.get("display_time", 3)
+
+        self.active_slideshow = False  # Initialize a flag for display loop
 
         self.enabled = True
 
@@ -73,8 +114,6 @@ class VisualRecallSkill(OVOSSkill):
 
         if not self.enabled:
             self.speak_dialog("MeePi's Visual Recall had an initialization error")
-        else:
-            self.speak("MeePi Visual Recall is ALIVE! Version 0 dot 9. Synced and Ready for NTR Messages")
 
     # ----------------------
     # SETTINGS HELPERS
@@ -150,23 +189,31 @@ class VisualRecallSkill(OVOSSkill):
             self.speak_dialog("no_image_found", {"memory_name": memory_name})
             return
 
-        # Remove cover image
+        # Remove cover image and prepare for slideshow
         images = [
             img for img in images
             if os.path.splitext(os.path.basename(img).lower())[0] != "cover"
         ]
-
         image_count = len(images)
+
+        # --- THE FIX: SIT TIGHT COMMAND ---
+        self.gui.override_idle = True
+        self.active_slideshow = True
+
         if image_count == 1:
             self.speak_dialog("show_image", {"memory_name": memory_name})
         else:
             self.speak_dialog("show_all_images", {"memory_name": memory_name, "count": image_count})
 
         for idx, img_path in enumerate(images, start=1):
+            # Check if stop() was called while we were sleeping
+            if not self.active_slideshow:
+                break
+
             if not os.path.exists(img_path):
                 continue
             self.log.info(f"Displaying image {idx}/{image_count}: {img_path}")
-            self.gui.show_image(img_path, fill='PreserveAspectFit')
+            self.gui.show_image(img_path, fill='PreserveAspectFit', override_idle=self.display_time + 1)
             time.sleep(self.display_time)
             # Add chatter every few images
             if image_count > 1 and idx < image_count:
@@ -257,5 +304,6 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     def stop(self):
         """Stop anything currently playing."""
+        self.active_slideshow = False  # This breaks the loop in _show_images
         self._release_gui()
         return True

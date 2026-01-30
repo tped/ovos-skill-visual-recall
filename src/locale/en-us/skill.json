@@ -1,0 +1,12 @@
+{
+"skill_id": "ovos-skill-visual-recall.tped",
+"source": "https://github.com/tped/ovos-skill-visual-recall",
+"name": "MeePi Memory Palace",
+"description": "MeePi Image and Media display",
+"examples": [
+"Show Me images (of|from) {memory}",
+"Can I see images (of|from) {memory}",
+"Do you have (images|photos|videos) (of|from) {memory}"
+],
+"tags": [ "Visuals" ]
+}
