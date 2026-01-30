@@ -16,7 +16,7 @@
     "pip_spec": "ovos-skill-visual-recall",
     "license": "# TODO: Add 'license' to .projenrc.json and run pj",
     "author": "Tom Pedersen",
-    "version": "1.0.1a1",
+    "version": "1.0.2a1",
     "url": "https://github.com/tped/ovos-skill-visual-recall",
     "skill_id": "ovos-skill-visual-recall.tped=ovos_skill_visual_recall:VisualRecallSkill",
     "skillname": "ovos-skill-visual-recall",
