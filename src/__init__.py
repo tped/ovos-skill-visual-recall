@@ -31,15 +31,6 @@ class VisualRecallSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.learning = True
-        # Initialize the flag here to keep PyCharm happy
-        self.active_slideshow = False
-        self.log_level = "INFO"
-        self.ocp = None
-        self.memories_data_path = None
-        self.media_folder = None
-        self.display_time = 3
-        self.memory_data = []
-        self.enabled = True
 
     @classproperty
     def runtime_requirements(self):
