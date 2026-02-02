@@ -5,7 +5,6 @@ from ovos_workshop.skills import OVOSSkill
 from ovos_bus_client.apis.ocp import OCPInterface
 from ovos_utils.ocp import MediaType, PlaybackType, MediaEntry
 from ovos_bus_client.message import Message
-from ovos_utils.log import LOG
 
 import os
 import json
@@ -57,8 +56,6 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
 
     def initialize(self):
-        LOG.debug("initialize() called")
-
         # merge default settings
         # self.settings is a jsondb, which extends the dict class and adds helpers like merge
         self.settings.merge(DEFAULT_SETTINGS, new_only=True)
@@ -72,8 +69,6 @@ class VisualRecallSkill(OVOSSkill):
                 f"MeePi Visual Recall, version {spoken_version}, initialized",
                 wait=False
             )
-
-        LOG.info(f"Visual Recall Skill version={self.skill_version()}")
 
         # Register OCP
         self.ocp = OCPInterface(self.bus)
@@ -106,6 +101,8 @@ class VisualRecallSkill(OVOSSkill):
 
         if not self.enabled:
             self.speak_dialog("MeePi's Visual Recall had an initialization error")
+
+        self.log.info(f"Visual Recall Skill version={self.skill_version()}")
 
     # ----------------------
     # SETTINGS HELPERS
@@ -297,7 +294,12 @@ class VisualRecallSkill(OVOSSkill):
     # MEMORY FOLDER HELPERS
     # ----------------------
     def find_matching_folder(self, memory_name):
+        # DEBUG: Only shows up if you specifically turn on Debugging
+        self.log.debug(f"Searching for folder matching: {memory_name}")
+
+        folder_name = "N/A"
         target_name = memory_name.lower().replace(" ", "_")
+
         for folder_name in os.listdir(self.media_folder):
             if folder_name.lower() == target_name:
                 return os.path.join(self.media_folder, folder_name)
@@ -305,6 +307,9 @@ class VisualRecallSkill(OVOSSkill):
         for folder_name in os.listdir(self.media_folder):
             if target_name in folder_name.lower():
                 return os.path.join(self.media_folder, folder_name)
+
+        # DEBUG: Tell us why it failed only if we are looking for it
+        self.log.debug(f"No match found for '{target_name}' in '{folder_name}'")
         return None
 
     # ----------------------
