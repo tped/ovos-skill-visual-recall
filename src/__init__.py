@@ -7,6 +7,7 @@ from ovos_utils.ocp import MediaType, PlaybackType, MediaEntry
 from ovos_bus_client.message import Message
 
 import os
+import re
 import json
 import time
 import filecmp
@@ -319,9 +320,13 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     def find_matching_folder(self, memory_name):
         # DEBUG: Only shows up if you specifically turn on Debugging
-        self.log.info(f"Searching for folder matching: {memory_name}")
+        self.log.debug(f"Searching for folder matching: {memory_name}")
 
-        target_name = memory_name.lower().replace(" ", "_")
+        # AGGRESSIVE SANITIZATION
+        # Remove punctuation (commas, dots, etc.)
+        clean_name = re.sub(r'[^\w\s]', '', memory_name.lower())
+        # Replace spaces/multiple spaces with a single underscore
+        target_name = re.sub(r'\s+', '_', clean_name).strip('_')
         all_folders = os.listdir(self.media_folder)
 
         # --- TIER 1: Exact Match ---
@@ -345,11 +350,11 @@ class VisualRecallSkill(OVOSSkill):
         # The "Fuzzy" catch-all if Tier 1 and 2 fail
         for folder in all_folders:
             if target_name in folder.lower():
-                self.log.info(f"VR: Partial match fallback found: {folder}")
+                self.log.debug(f"VR: Partial match fallback found: {folder}")
                 return os.path.join(self.media_folder, folder)
 
         # DEBUG: Using a fixed string since 'folder_name' scope is loop-dependent
-        self.log.info(f"No match found for '{target_name}' in {self.media_folder}")
+        self.log.debug(f"No match found for '{target_name}' in {self.media_folder}")
         return None
 
     # ----------------------
