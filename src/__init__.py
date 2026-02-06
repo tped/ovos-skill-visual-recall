@@ -9,6 +9,7 @@ from ovos_bus_client.message import Message
 import os
 import json
 import time
+import filecmp
 
 from .version import (
     VERSION_MAJOR,
@@ -22,7 +23,7 @@ DEFAULT_SETTINGS = {
     "memories_data_path": "/home/ovos/NTR-Data/MeePiMemoryBank.json",
     "media_folder": "/home/ovos/MeePi_MemoryPalace",
     "display_time": 3,  # default seconds per image,
-    "log_level": "WARNING"
+    "log_level": "DEBUG"
 }
 
 
@@ -51,6 +52,7 @@ class VisualRecallSkill(OVOSSkill):
         if VERSION_ALPHA and int(VERSION_ALPHA) > 0:
             version_string += f"a{VERSION_ALPHA}"
         return version_string
+
     # ----------------------
     # INITIALIZATION
     # ----------------------
@@ -124,7 +126,7 @@ class VisualRecallSkill(OVOSSkill):
             return
 
         self.log.info(f"visual-recall: received request to display media for {memory_name}")
-        self._show_images(media_path, memory_name)
+        self._show_images(media_path, memory_name, filter_cover=True)
 
     # ----------------------
     # INTENT HANDLER
@@ -142,7 +144,7 @@ class VisualRecallSkill(OVOSSkill):
             return
 
         # --------- IMAGES ----------
-        self._show_images(folder, memory_name)
+        self._show_images(folder, memory_name, filter_cover=False)
 
         # --------- VIDEOS ----------
         videos = self.get_video_files(folder)
@@ -171,19 +173,41 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     # MEDIA DISPLAY HELPERS
     # ----------------------
-    def _show_images(self, folder: str, memory_name: str):
-        """Display all images in a memory folder sequentially with GUI release."""
-        images = self.get_media_files(folder)
-        if not images:
+    def _show_images(self, folder: str, memory_name: str, filter_cover: bool = True):
+        """Display unique images. If filter_cover is True, skips the specific 'cover.jpg' file."""
+        all_images = self.get_media_files(folder)
+        if not all_images:
             self.speak_dialog("no_image_found", {"memory_name": memory_name})
             return
 
-        # Remove cover image and prepare for slideshow
-        images = [
-            img for img in images
-            if os.path.splitext(os.path.basename(img).lower())[0] != "cover"
-        ]
+        # 1. Identify the cover file
+        cover_path = next((img for img in all_images
+                           if os.path.splitext(os.path.basename(img))[0].lower().strip() == "cover"), None)
+
+        # 2. Build the list
+        images = []
+        for img in all_images:
+            is_cover_file = (img == cover_path)
+
+            # If NTR called this, skip the actual cover file
+            if filter_cover and is_cover_file:
+                continue
+
+            # ALWAYS skip byte-for-byte clones of the cover (The Plymouth Fix)
+            if not is_cover_file and cover_path and filecmp.cmp(img, cover_path, shallow=True):
+                self.log.info(f"VR: Skipping duplicate clone: {os.path.basename(img)}")
+                continue
+
+            images.append(img)
+
         image_count = len(images)
+        if image_count == 0:
+            if filter_cover:  # NTR scenario
+                self.log.info("VR: No additional unique images to show.")
+            else:  # Standalone scenario
+                self.speak(f"I don't have any images for {memory_name}, Tom.")
+            return
+
         # Total duration = (number of images * display time) + (estimated speech time)
         # We'll use 3 seconds as a "speech buffer" per chatter instance
         speech_buffers = (image_count // 2) * 3
@@ -295,21 +319,37 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     def find_matching_folder(self, memory_name):
         # DEBUG: Only shows up if you specifically turn on Debugging
-        self.log.debug(f"Searching for folder matching: {memory_name}")
+        self.log.info(f"Searching for folder matching: {memory_name}")
 
-        folder_name = "N/A"
         target_name = memory_name.lower().replace(" ", "_")
+        all_folders = os.listdir(self.media_folder)
 
-        for folder_name in os.listdir(self.media_folder):
-            if folder_name.lower() == target_name:
-                return os.path.join(self.media_folder, folder_name)
-        # fallback partial match
-        for folder_name in os.listdir(self.media_folder):
-            if target_name in folder_name.lower():
-                return os.path.join(self.media_folder, folder_name)
+        # --- TIER 1: Exact Match ---
+        # Good for legacy folders or non-timestamped entries
+        for folder in all_folders:
+            if folder.lower() == target_name:
+                self.log.info(f"VR: Exact folder match found: {folder}")
+                return os.path.join(self.media_folder, folder)
 
-        # DEBUG: Tell us why it failed only if we are looking for it
-        self.log.debug(f"No match found for '{target_name}' in '{folder_name}'")
+        # --- TIER 2: Timestamped Suffix Match (The NTR Special) ---
+        # Specifically looks for YYYYMMDDHHMMSS_target_name
+        for folder in all_folders:
+            if "_" in folder:
+                # Splits once at the first underscore to separate timestamp from title
+                parts = folder.lower().split("_", 1)
+                if len(parts) > 1 and parts[1] == target_name:
+                    self.log.info(f"VR: Timestamped title match found: {folder}")
+                    return os.path.join(self.media_folder, folder)
+
+        # --- TIER 3: Fallback Partial Match ---
+        # The "Fuzzy" catch-all if Tier 1 and 2 fail
+        for folder in all_folders:
+            if target_name in folder.lower():
+                self.log.info(f"VR: Partial match fallback found: {folder}")
+                return os.path.join(self.media_folder, folder)
+
+        # DEBUG: Using a fixed string since 'folder_name' scope is loop-dependent
+        self.log.info(f"No match found for '{target_name}' in {self.media_folder}")
         return None
 
     # ----------------------
