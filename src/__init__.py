@@ -16,7 +16,8 @@ from .version import (
     VERSION_MAJOR,
     VERSION_MINOR,
     VERSION_BUILD,
-    VERSION_ALPHA
+    VERSION_ALPHA,
+    VERSION_TAG
 )
 
 # Default settings
@@ -80,8 +81,8 @@ class VisualRecallSkill(OVOSSkill):
         self.add_event("visual.recall.display", self.handle_display_request)
 
         # Load paths & settings
-        self.memories_data_path = self.settings.get("memories_data_path")
-        self.media_folder = self.settings.get("media_folder")
+        self.memories_data_path = self.settings.get("memories_data_path") or ""
+        self.media_folder = self.settings.get("media_folder") or ""
         self.display_time = self.settings.get("display_time", 3)
 
         self.active_slideshow = False  # Initialize a flag for display loop
@@ -105,7 +106,16 @@ class VisualRecallSkill(OVOSSkill):
         if not self.enabled:
             self.speak_dialog("MeePi's Visual Recall had an initialization error")
 
-        self.log.info(f"Visual Recall Skill version={self.skill_version()}")
+        # log and Speak version if log_level != INFO
+        self.log.info(f"Visual Recall Skill version={self.skill_version()} tag='{VERSION_TAG}'")
+        if self.log_level.upper() != "INFO":
+            ver = self.skill_version()
+            spoken_version = ver.replace("a", " alpha ")
+            tag = f", {VERSION_TAG}" if VERSION_TAG else ""
+            self.speak(
+                f"MeePi Visual Recall, version {spoken_version}{tag}, initialized",
+                wait=False
+            )
 
     # ----------------------
     # SETTINGS HELPERS
@@ -118,8 +128,9 @@ class VisualRecallSkill(OVOSSkill):
     # REQUEST HANDLER for NTR
     # -----------------------
     def handle_display_request(self, message: Message):
-        media_path = message.data.get("media_path")
-        memory_name = message.data.get("title") or "this memory"
+        data = message.data or {}
+        media_path = data.get("media_path") or ""
+        memory_name = data.get("title") or "this memory"
 
         if not media_path or not os.path.exists(media_path):
             self.log.error(f"visual-recall: no media found at {media_path}")
@@ -134,6 +145,11 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     @intent_handler("MemoryPalace.intent")
     def handle_memory_palace_intent(self, message):
+
+        if not self.enabled:
+            self.speak("My visual recall isn't available right now.")
+            return
+
         memory_name = message.data.get("query")
         if not memory_name:
             self.speak("I didn't catch the memory you're looking for.")
@@ -195,7 +211,7 @@ class VisualRecallSkill(OVOSSkill):
                 continue
 
             # ALWAYS skip byte-for-byte clones of the cover (The Plymouth Fix)
-            if not is_cover_file and cover_path and filecmp.cmp(img, cover_path, shallow=True):
+            if not is_cover_file and cover_path and filecmp.cmp(img, cover_path, shallow=False):
                 self.log.info(f"VR: Skipping duplicate clone: {os.path.basename(img)}")
                 continue
 
@@ -213,6 +229,11 @@ class VisualRecallSkill(OVOSSkill):
         # We'll use 3 seconds as a "speech buffer" per chatter instance
         speech_buffers = (image_count // 2) * 3
         total_session_time = (image_count * self.display_time) + speech_buffers + 10
+
+        if not self.gui:
+            self.log.error("VR: GUI not available, can't show images")
+            self.speak("I can't reach my display right now.")
+            return
 
         # --- THE FIX: lock idle for expected duration of the show
         self.gui.override_idle = total_session_time
@@ -255,15 +276,17 @@ class VisualRecallSkill(OVOSSkill):
 
     def _release_gui(self):
         """Safely release GUI to prevent player lockout."""
+        self.active_slideshow = False  # always clear the flag, GUI or not
+        if not self.gui:
+            return
         try:
-            self.active_slideshow = False
-            self.gui.override_idle = False  # Tells the bus 'I am done with the timer'
-            self.gui.remove_page("ImagePage")  # Optional: specific cleanup if needed
+            self.gui.override_idle = False
+            self.gui.remove_page("ImagePage")
             self.gui.release()
         except Exception as e:
             self.log.warning(f"GUI release failed: {e}")
 
-    def _file2entry(self, file_path, media_type):
+    def _file2entry(self, file_path: str, media_type: MediaType):
         """Convert a file path into a MediaEntry for OCP playback."""
         file_path = os.path.expanduser(file_path)
         if not file_path.startswith("file://"):
@@ -361,7 +384,9 @@ class VisualRecallSkill(OVOSSkill):
     # STOP HANDLER
     # ----------------------
     def stop(self):
-        """Stop anything currently playing."""
-        self.active_slideshow = False  # This breaks the loop in _show_images
+        """Stop the slideshow, but only if one is actually running."""
+        if not self.active_slideshow:
+            return False
+        self.active_slideshow = False  # breaks the loop in _show_images
         self._release_gui()
         return True
