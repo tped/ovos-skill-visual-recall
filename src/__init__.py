@@ -141,7 +141,7 @@ class VisualRecallSkill(OVOSSkill):
             return
 
         self.log.info(f"visual-recall: received request to display media for {memory_name}")
-        self._show_images(media_path, memory_name, filter_cover=True)
+        self._present_memory(media_path, memory_name, filter_cover=True)
 
     # ----------------------
     # INTENT HANDLERS
@@ -224,54 +224,7 @@ class VisualRecallSkill(OVOSSkill):
             self.speak(f"I couldn't find any media for {memory_name}.")
             return
 
-        self.stop_requested = False
-
-        # --------- 1. INVENTORY ----------
-        images = self._collect_images(folder, filter_cover=False)
-        audio_files = self.get_audio_files(folder)
-        videos = self.get_video_files(folder)
-
-        if not (images or audio_files or videos):
-            self.speak(f"I couldn't find any media for {memory_name}.")
-            return
-
-        # --------- 2. DECIDE ----------
-        show_images = bool(images)
-        play_audio = bool(audio_files)
-
-        if images and audio_files:  # only ask when there's a real choice
-            found = self._describe_media(len(images), len(audio_files), len(videos))
-            reply = self.get_response(
-                "mixed_media_prompt",
-                {"memory_name": memory_name, "found": found},
-                num_retries=1,
-            )
-            if self.stop_requested:
-                return
-
-            choice = self._parse_media_choice(reply)
-            self.log.info(f"VR: media choice reply={reply!r} -> {choice}")
-
-            if choice == "none":
-                self.speak("Okay.")
-                return
-            if choice == "unclear":
-                self.speak("I didn't catch that, so I'll just show the images.")
-                choice = "images"
-
-            show_images = choice in ("images", "both")
-            play_audio = choice in ("audio", "both")
-
-        # --------- 3. PRESENT (fixed order: images, audio) ----------
-        if show_images:
-            self._show_images(folder, memory_name, filter_cover=False, images=images)
-
-        if play_audio and not self.stop_requested:
-            self._play_audio(folder, memory_name)
-
-        # --------- 4. VIDEO (still a stub) ----------
-        if videos and not self.stop_requested:
-            self.speak("I also have a video memory but can't play it yet ... sorry")
+        self._present_memory(folder, memory_name, filter_cover=False)
 
     # ----------------------
     # MEDIA DISPLAY HELPERS
@@ -331,7 +284,64 @@ class VisualRecallSkill(OVOSSkill):
 
             images.append(img)
         return images
-    
+
+    def _present_memory(self, folder: str, memory_name: str, filter_cover: bool):
+        """Shared by the standalone intent and the NTR hand-off."""
+        self.stop_requested = False
+
+        images = self._collect_images(folder, filter_cover=filter_cover)
+        audio_files = self.get_audio_files(folder)
+        videos = self.get_video_files(folder)
+
+        if not (images or audio_files or videos):
+            if filter_cover:
+                self.log.info("VR: No additional media to present.")
+            else:
+                self.speak(f"I couldn't find any media for {memory_name}.")
+            return
+
+        show_images = bool(images)
+        play_audio = bool(audio_files)
+
+        if audio_files and (images or filter_cover):
+            if images:
+                dialog = "mixed_media_prompt"
+                found = self._describe_media(len(images), len(audio_files), len(videos))
+            else:
+                dialog = "audio_only_prompt"
+                found = self._describe_media(0, len(audio_files), 0)
+
+            reply = self.get_response(
+                dialog,
+                {"memory_name": memory_name, "found": found},
+                num_retries=1,
+            )
+            if self.stop_requested:
+                return
+
+            choice = self._parse_media_choice(reply)
+            self.log.info(f"VR: media choice reply={reply!r} -> {choice}")
+
+            if choice == "none":
+                self.speak("Okay.")
+                return
+            if choice == "unclear":
+                self.speak("I didn't catch that, so I'll leave it there.")
+                return
+
+            show_images = bool(images) and choice in ("images", "both")
+            play_audio = choice in ("audio", "both")
+
+        if show_images:
+            self._show_images(folder, memory_name, filter_cover=filter_cover, images=images)
+
+        if play_audio and not self.stop_requested:
+            self._play_audio(folder, memory_name)
+
+        if videos and not self.stop_requested:
+            self.speak("I also have a video memory but can't play it yet ... sorry")
+
+
     def _show_images(self, folder: str, memory_name: str, filter_cover: bool = True, images=None):
         """Display unique images. If filter_cover is True, skips the specific 'cover.jpg' file."""
         if images is None:  # NTR hand-off path: build the list ourselves
@@ -461,6 +471,7 @@ class VisualRecallSkill(OVOSSkill):
             os.path.join(folder, f)
             for f in sorted(os.listdir(folder))
             if f.lower().endswith(valid_ext)
+               and os.path.getsize(os.path.join(folder, f)) > 0  # skip empty/failed copies
         ]
 
     # ----------------------
