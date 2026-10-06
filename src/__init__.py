@@ -11,6 +11,7 @@ import re
 import json
 import time
 import filecmp
+import subprocess
 
 from .version import (
     VERSION_MAJOR,
@@ -28,6 +29,15 @@ DEFAULT_SETTINGS = {
     "log_level": "DEBUG"
 }
 
+# Words used to interpret the reply to "see the images, hear the audio, or both?"
+CHOICE_BOTH = {"both", "everything"}
+CHOICE_YES = {"yes", "yeah", "yep", "sure", "ok", "okay", "please"}
+CHOICE_NONE = {"no", "nope", "nothing", "none", "neither", "cancel", "skip"}
+CHOICE_IMAGES = {"see", "show", "look", "picture", "pictures", "image", "images",
+                 "photo", "photos", "slideshow"}
+# "here" is a likely STT mishearing of "hear"
+CHOICE_AUDIO = {"hear", "here", "listen", "audio", "sound", "song", "music",
+                "recording", "recordings", "play"}
 
 class VisualRecallSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
@@ -65,15 +75,6 @@ class VisualRecallSkill(OVOSSkill):
         self.settings.merge(DEFAULT_SETTINGS, new_only=True)
         self.log_level = self.settings.get("log_level", "INFO")
 
-        # Speak version if log_level != INFO
-        if self.log_level.upper() != "INFO":
-            ver = self.skill_version()
-            spoken_version = ver.replace("a", " alpha ")
-            self.speak(
-                f"MeePi Visual Recall, version {spoken_version}, initialized",
-                wait=False
-            )
-
         # Register OCP
         self.ocp = OCPInterface(self.bus)
 
@@ -86,6 +87,8 @@ class VisualRecallSkill(OVOSSkill):
         self.display_time = self.settings.get("display_time", 3)
 
         self.active_slideshow = False  # Initialize a flag for display loop
+        self.audio_proc = None
+        self.stop_requested = False
 
         self.enabled = True
 
@@ -141,11 +144,72 @@ class VisualRecallSkill(OVOSSkill):
         self._show_images(media_path, memory_name, filter_cover=True)
 
     # ----------------------
-    # INTENT HANDLER
+    # INTENT HANDLERS
     # ----------------------
+    @intent_handler("PlayRecording.intent")
+    def handle_play_recording_intent(self, message):
+        if not self.enabled:
+            self.speak("My visual recall isn't available right now.")
+            return
+
+        memory_name = message.data.get("query")
+        if not memory_name:
+            self.speak("I didn't catch what you wanted to hear.")
+            return
+
+        folder = self.find_matching_folder(memory_name)
+        if not folder:
+            self.speak(f"I couldn't find any audio for {memory_name}.")
+            return
+
+        self.stop_requested = False
+        self._play_audio(folder, memory_name)
+
+    # ----------------------
+    # Audio Playback HELPERS
+    # ----------------------
+
+    def _play_audio(self, folder: str, memory_name: str):
+        """Play every audio file in the folder, in filename order, via mpv (audio only)."""
+        audio_files = self.get_audio_files(folder)
+        if not audio_files:
+            self.speak(f"I don't have any audio for {memory_name}, Tom.")
+            return
+
+        # Announce first and WAIT, so the speech is finished before the audio starts
+        self.speak_dialog("playing_audio", {"memory_name": memory_name}, wait=True)
+
+        for audio_path in audio_files:
+            if self.stop_requested:
+                break
+            self.log.info(f"VR: Playing audio: {audio_path}")
+
+            try:
+                proc = subprocess.Popen(
+                    ["mpv", "--no-video", "--really-quiet", audio_path]
+                )
+            except FileNotFoundError:
+                self.log.error("VR: mpv not found on PATH")
+                self.speak("I can't play audio right now, my player isn't installed.")
+                return
+            except Exception as e:
+                self.log.error(f"VR: failed to start audio playback: {e}")
+                self.speak("Something went wrong trying to play that, Tom.")
+                return
+
+            self.audio_proc = proc
+            if self.stop_requested:  # stop() fired while we were starting up
+                proc.terminate()
+            proc.wait()  # blocks this handler thread, not the whole skill
+            self.audio_proc = None
+
+            if proc.returncode and proc.returncode > 0:
+                self.log.warning(f"VR: mpv exited with code {proc.returncode} for {audio_path}")
+
+        self.log.info("VR: Audio playback finished.")
+
     @intent_handler("MemoryPalace.intent")
     def handle_memory_palace_intent(self, message):
-
         if not self.enabled:
             self.speak("My visual recall isn't available right now.")
             return
@@ -160,48 +224,98 @@ class VisualRecallSkill(OVOSSkill):
             self.speak(f"I couldn't find any media for {memory_name}.")
             return
 
-        # --------- IMAGES ----------
-        self._show_images(folder, memory_name, filter_cover=False)
+        self.stop_requested = False
 
-        # --------- VIDEOS ----------
-        videos = self.get_video_files(folder)
-        if videos:
-            self.speak_dialog("playing_videos", {"memory_name": memory_name})
-            for vid in videos:
-                if not os.path.exists(vid):
-                    continue
-                self.log.info(f"Playing video: {vid}")
-                entry = self._file2entry(vid, MediaType.VIDEO)
-                self.speak(f"I have a video memory but can't play it yet ... sorry")
-                # self.ocp.play([entry])
-
-        # --------- AUDIO ----------
+        # --------- 1. INVENTORY ----------
+        images = self._collect_images(folder, filter_cover=False)
         audio_files = self.get_audio_files(folder)
-        if audio_files:
-            self.speak_dialog("playing_audio", {"memory_name": memory_name})
-            for aud in audio_files:
-                if not os.path.exists(aud):
-                    continue
-                self.log.info(f"Playing audio: {aud}")
-                entry = self._file2entry(aud, MediaType.AUDIO)
-                self.speak(f"I have an audio memory but can't play it yet ... sorry")
-                # self.ocp.play([entry])
+        videos = self.get_video_files(folder)
+
+        if not (images or audio_files or videos):
+            self.speak(f"I couldn't find any media for {memory_name}.")
+            return
+
+        # --------- 2. DECIDE ----------
+        show_images = bool(images)
+        play_audio = bool(audio_files)
+
+        if images and audio_files:  # only ask when there's a real choice
+            found = self._describe_media(len(images), len(audio_files), len(videos))
+            reply = self.get_response(
+                "mixed_media_prompt",
+                {"memory_name": memory_name, "found": found},
+                num_retries=1,
+            )
+            if self.stop_requested:
+                return
+
+            choice = self._parse_media_choice(reply)
+            self.log.info(f"VR: media choice reply={reply!r} -> {choice}")
+
+            if choice == "none":
+                self.speak("Okay.")
+                return
+            if choice == "unclear":
+                self.speak("I didn't catch that, so I'll just show the images.")
+                choice = "images"
+
+            show_images = choice in ("images", "both")
+            play_audio = choice in ("audio", "both")
+
+        # --------- 3. PRESENT (fixed order: images, audio) ----------
+        if show_images:
+            self._show_images(folder, memory_name, filter_cover=False, images=images)
+
+        if play_audio and not self.stop_requested:
+            self._play_audio(folder, memory_name)
+
+        # --------- 4. VIDEO (still a stub) ----------
+        if videos and not self.stop_requested:
+            self.speak("I also have a video memory but can't play it yet ... sorry")
 
     # ----------------------
     # MEDIA DISPLAY HELPERS
     # ----------------------
-    def _show_images(self, folder: str, memory_name: str, filter_cover: bool = True):
-        """Display unique images. If filter_cover is True, skips the specific 'cover.jpg' file."""
-        all_images = self.get_media_files(folder)
-        if not all_images:
-            self.speak_dialog("no_image_found", {"memory_name": memory_name})
-            return
+    @staticmethod
+    def _parse_media_choice(reply):
+        """Turn the spoken reply into 'images', 'audio', 'both', 'none' or 'unclear'."""
+        words = set(re.findall(r"[a-z']+", (reply or "").lower()))
+        wants_images = bool(words & CHOICE_IMAGES)
+        wants_audio = bool(words & CHOICE_AUDIO)
 
-        # 1. Identify the cover file
+        if words & CHOICE_BOTH or (wants_images and wants_audio):
+            return "both"
+        if wants_images:
+            return "images"
+        if wants_audio:
+            return "audio"
+        if words & CHOICE_NONE:
+            return "none"
+        if words & CHOICE_YES:
+            return "both"
+        return "unclear"
+
+    @staticmethod
+    def _describe_media(n_images, n_audio, n_videos):
+        """Build a spoken summary like '4 images, 1 audio recording and 1 video'."""
+        parts = []
+        if n_images:
+            parts.append(f"{n_images} image{'s' if n_images != 1 else ''}")
+        if n_audio:
+            parts.append(f"{n_audio} audio recording{'s' if n_audio != 1 else ''}")
+        if n_videos:
+            parts.append(f"{n_videos} video{'s' if n_videos != 1 else ''}")
+        if len(parts) > 1:
+            return ", ".join(parts[:-1]) + " and " + parts[-1]
+        return parts[0] if parts else ""
+
+    def _collect_images(self, folder: str, filter_cover: bool = True):
+        """Return the unique images to show (same cover/clone rules as before)."""
+        all_images = self.get_media_files(folder)
+
         cover_path = next((img for img in all_images
                            if os.path.splitext(os.path.basename(img))[0].lower().strip() == "cover"), None)
 
-        # 2. Build the list
         images = []
         for img in all_images:
             is_cover_file = (img == cover_path)
@@ -216,6 +330,17 @@ class VisualRecallSkill(OVOSSkill):
                 continue
 
             images.append(img)
+        return images
+    
+    def _show_images(self, folder: str, memory_name: str, filter_cover: bool = True, images=None):
+        """Display unique images. If filter_cover is True, skips the specific 'cover.jpg' file."""
+        if images is None:  # NTR hand-off path: build the list ourselves
+            if not self.get_media_files(folder):
+                self.speak_dialog("no_image_found", {"memory_name": memory_name})
+                return
+            images = self._collect_images(folder, filter_cover)
+
+        # Identify the cover file & Build List of media now handled in above/seperate routines
 
         image_count = len(images)
         if image_count == 0:
@@ -384,9 +509,21 @@ class VisualRecallSkill(OVOSSkill):
     # STOP HANDLER
     # ----------------------
     def stop(self):
-        """Stop the slideshow, but only if one is actually running."""
-        if not self.active_slideshow:
-            return False
-        self.active_slideshow = False  # breaks the loop in _show_images
-        self._release_gui()
-        return True
+        """Stop anything currently playing."""
+        stopped = False
+
+        # Tell any in-progress memory palace flow not to move on to its next stage
+        self.stop_requested = True
+
+        if self.active_slideshow:
+            self.active_slideshow = False
+            self._release_gui()
+            stopped = True
+
+        proc = self.audio_proc
+        if proc is not None:
+            proc.terminate()
+            self.audio_proc = None
+            stopped = True
+
+        return stopped
