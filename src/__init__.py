@@ -4,7 +4,7 @@ from ovos_workshop.decorators import intent_handler
 from ovos_workshop.skills import OVOSSkill
 from ovos_bus_client.apis.ocp import OCPInterface
 from ovos_utils.ocp import MediaType, PlaybackType, MediaEntry
-from ovos_bus_client.message import Message
+from ovos_bus_client.message import Message, dig_for_message
 
 import os
 import re
@@ -285,9 +285,25 @@ class VisualRecallSkill(OVOSSkill):
             images.append(img)
         return images
 
+    def _activate_for_converse(self):
+        """Make VR the active skill so get_response replies are delivered to us.
+
+        NTR hand-offs arrive via a bus event, so VR was never activated by an intent
+        match. The context skill_id must be VR's own or the converse service refuses
+        the request, so we force it instead of trusting the incoming message.
+        """
+        msg = dig_for_message() or Message("")
+        activate_msg = msg.forward(
+            "intent.service.skills.activate",
+            data={"skill_id": self.skill_id, "timeout": 5},  # minutes
+        )
+        activate_msg.context["skill_id"] = self.skill_id
+        self.bus.emit(activate_msg)
+
     def _present_memory(self, folder: str, memory_name: str, filter_cover: bool):
         """Shared by the standalone intent and the NTR hand-off."""
         self.stop_requested = False
+        self._activate_for_converse()
 
         images = self._collect_images(folder, filter_cover=filter_cover)
         audio_files = self.get_audio_files(folder)
