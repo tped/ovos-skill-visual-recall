@@ -31,8 +31,8 @@ DEFAULT_SETTINGS = {
 
 # Words used to interpret the reply to "see the images, hear the audio, or both?"
 CHOICE_BOTH = {"both", "everything"}
-CHOICE_YES = {"yes", "yeah", "yep", "sure", "ok", "okay", "please"}
-CHOICE_NONE = {"no", "nope", "nothing", "none", "neither", "cancel", "skip"}
+CHOICE_YES = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please"}
+CHOICE_NONE = {"no", "nope", "nah", "nothing", "none", "neither", "cancel", "skip"}
 CHOICE_IMAGES = {"see", "show", "look", "picture", "pictures", "image", "images",
                  "photo", "photos", "slideshow"}
 # "here" is a likely STT mishearing of "hear"
@@ -537,7 +537,9 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     def can_stop(self, message: Message) -> bool:
         """Tell the stop pipeline whether VR has anything running to stop."""
-        return bool(self.active_slideshow or self.audio_proc is not None)
+        busy = bool(self.active_slideshow or self.audio_proc is not None)
+        self.log.debug(f"VR: can_stop -> {busy}")
+        return busy
 
     def stop(self):
         """Stop anything currently playing."""

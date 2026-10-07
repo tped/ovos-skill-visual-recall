@@ -1,5 +1,5 @@
 VERSION_MAJOR = 1
 VERSION_MINOR = 2
-VERSION_BUILD = 4
+VERSION_BUILD = 5
 VERSION_ALPHA = 1
-VERSION_TAG = "Version 1.2.3 - Audio Media playback! Attempt 3 - I CAN STOP!"
+VERSION_TAG = "Version 1.2.5 - Audio Media playback! Attempt 5 - CAN I STOP?!"
