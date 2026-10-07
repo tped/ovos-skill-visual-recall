@@ -533,8 +533,12 @@ class VisualRecallSkill(OVOSSkill):
         return None
 
     # ----------------------
-    # STOP HANDLER
+    # HANDLE STOP
     # ----------------------
+    def can_stop(self, message: Message) -> bool:
+        """Tell the stop pipeline whether VR has anything running to stop."""
+        return bool(self.active_slideshow or self.audio_proc is not None)
+
     def stop(self):
         """Stop anything currently playing."""
         stopped = False
