@@ -176,12 +176,24 @@ class VisualRecallSkill(OVOSSkill):
             self.speak(f"I don't have any audio for {memory_name}, Tom.")
             return
 
+        total = len(audio_files)
+
         # Announce first and WAIT, so the speech is finished before the audio starts
         self.speak_dialog("playing_audio", {"memory_name": memory_name}, wait=True)
 
-        for audio_path in audio_files:
+        for idx, audio_path in enumerate(audio_files, start=1):
             if self.stop_requested:
                 break
+
+            title = self._speakable_title(audio_path)
+            if total > 1:
+                self.speak(f"Number {idx} of {total}: {title}", wait=True)
+            else:
+                self.speak(title, wait=True)
+
+            if self.stop_requested:  # "stop" arrived during the announcement
+                break
+                
             self.log.info(f"VR: Playing audio: {audio_path}")
 
             try:
@@ -203,7 +215,8 @@ class VisualRecallSkill(OVOSSkill):
             proc.wait()  # blocks this handler thread, not the whole skill
             self.audio_proc = None
 
-            if proc.returncode and proc.returncode > 0:
+            # 4 = mpv ended by a signal (our terminate() on stop), which is normal
+            if proc.returncode not in (0, 4) and not self.stop_requested:
                 self.log.warning(f"VR: mpv exited with code {proc.returncode} for {audio_path}")
 
         self.log.info("VR: Audio playback finished.")
@@ -232,7 +245,9 @@ class VisualRecallSkill(OVOSSkill):
     @staticmethod
     def _parse_media_choice(reply):
         """Turn the spoken reply into 'images', 'audio', 'both', 'none' or 'unclear'."""
-        words = set(re.findall(r"[a-z']+", (reply or "").lower()))
+        # Squeeze stretched STT output ("yesssss", "noooo") down to one letter
+        text = re.sub(r"(.)\1{2,}", r"\1", (reply or "").lower())
+        words = set(re.findall(r"[a-z']+", text))
         wants_images = bool(words & CHOICE_IMAGES)
         wants_audio = bool(words & CHOICE_AUDIO)
 
@@ -489,6 +504,19 @@ class VisualRecallSkill(OVOSSkill):
             if f.lower().endswith(valid_ext)
                and os.path.getsize(os.path.join(folder, f)) > 0  # skip empty/failed copies
         ]
+
+    @staticmethod
+    def _speakable_title(path: str) -> str:
+        """Spoken name for a media file, from its filename.
+        Convention: 'Title - Artist.ext' is spoken as 'Title by Artist'."""
+        name = os.path.splitext(os.path.basename(path))[0]
+        name = re.sub(r"^\d{1,3}[\s._-]+", "", name)   # leading track number from old rips
+        name = name.replace("_", " ")
+        name = re.sub(r"[()\[\]]", " ", name)          # '(live)' reads better as plain words
+        if " - " in name:
+            title, artist = name.rsplit(" - ", 1)      # split on the LAST ' - ' so titles can contain one
+            name = f"{title.strip()} by {artist.strip()}"
+        return re.sub(r"\s+", " ", name).strip() or "this recording"
 
     # ----------------------
     # MEMORY FOLDER HELPERS
