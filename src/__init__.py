@@ -89,6 +89,8 @@ class VisualRecallSkill(OVOSSkill):
         self.active_slideshow = False  # Initialize a flag for display loop
         self.audio_proc = None
         self.stop_requested = False
+        self.audio_active = False  # True while a track queue is running
+        self.skip_requested = False
 
         self.enabled = True
 
@@ -165,59 +167,75 @@ class VisualRecallSkill(OVOSSkill):
         self.stop_requested = False
         self._play_audio(folder, memory_name)
 
+    @intent_handler("SkipTrack.intent")
+    def handle_skip(self, _message):
+        if not self.audio_active:
+            self.speak("Nothing is playing right now.")
+            return
+        self.skip_requested = True
+        proc = self.audio_proc
+        if proc is not None:
+            proc.terminate()  # during an announcement there's no mpv; the flag does the work
+
     # ----------------------
     # Audio Playback HELPERS
     # ----------------------
 
     def _play_audio(self, folder: str, memory_name: str):
-        """Play every audio file in the folder, in filename order, via mpv (audio only)."""
+        """Play the audio files in filename order, announcing each one.
+        'skip' ends the current track (or announcement) and moves to the next."""
         audio_files = self.get_audio_files(folder)
         if not audio_files:
             self.speak(f"I don't have any audio for {memory_name}, Tom.")
             return
 
         total = len(audio_files)
-
-        # Announce first and WAIT, so the speech is finished before the audio starts
         self.speak_dialog("playing_audio", {"memory_name": memory_name}, wait=True)
 
-        for idx, audio_path in enumerate(audio_files, start=1):
-            if self.stop_requested:
-                break
+        self.audio_active = True
+        try:
+            for idx, audio_path in enumerate(audio_files, start=1):
+                if self.stop_requested:
+                    break
+                self.skip_requested = False
 
-            title = self._speakable_title(audio_path)
-            if total > 1:
-                self.speak(f"Number {idx} of {total}: {title}", wait=True)
-            else:
-                self.speak(title, wait=True)
+                title = self._speakable_title(audio_path)
+                if total > 1:
+                    self.speak(f"Number {idx} of {total}: {title}", wait=True)
+                else:
+                    self.speak(title, wait=True)
 
-            if self.stop_requested:  # "stop" arrived during the announcement
-                break
-                
-            self.log.info(f"VR: Playing audio: {audio_path}")
+                if self.stop_requested:
+                    break
+                if self.skip_requested:  # skipped during the announcement
+                    continue
 
-            try:
-                proc = subprocess.Popen(
-                    ["mpv", "--no-video", "--really-quiet", audio_path]
-                )
-            except FileNotFoundError:
-                self.log.error("VR: mpv not found on PATH")
-                self.speak("I can't play audio right now, my player isn't installed.")
-                return
-            except Exception as e:
-                self.log.error(f"VR: failed to start audio playback: {e}")
-                self.speak("Something went wrong trying to play that, Tom.")
-                return
+                self.log.info(f"VR: Playing audio {idx}/{total}: {audio_path}")
+                try:
+                    proc = subprocess.Popen(
+                        ["mpv", "--no-video", "--really-quiet", audio_path]
+                    )
+                except FileNotFoundError:
+                    self.log.error("VR: mpv not found on PATH")
+                    self.speak("I can't play audio right now, my player isn't installed.")
+                    return
+                except Exception as e:
+                    self.log.error(f"VR: failed to start audio playback: {e}")
+                    self.speak("Something went wrong trying to play that, Tom.")
+                    return
 
-            self.audio_proc = proc
-            if self.stop_requested:  # stop() fired while we were starting up
-                proc.terminate()
-            proc.wait()  # blocks this handler thread, not the whole skill
-            self.audio_proc = None
+                self.audio_proc = proc
+                if self.stop_requested or self.skip_requested:  # arrived while starting up
+                    proc.terminate()
+                proc.wait()
+                self.audio_proc = None
 
-            # 4 = mpv ended by a signal (our terminate() on stop), which is normal
-            if proc.returncode not in (0, 4) and not self.stop_requested:
-                self.log.warning(f"VR: mpv exited with code {proc.returncode} for {audio_path}")
+                # 4 = mpv ended by a signal (our terminate()), which is normal
+                if proc.returncode not in (0, 4) and not (self.stop_requested or self.skip_requested):
+                    self.log.warning(f"VR: mpv exited with code {proc.returncode} for {audio_path}")
+        finally:
+            self.audio_active = False
+            self.skip_requested = False
 
         self.log.info("VR: Audio playback finished.")
 
@@ -312,7 +330,7 @@ class VisualRecallSkill(OVOSSkill):
             "intent.service.skills.activate",
             data={"skill_id": self.skill_id, "timeout": 5},  # minutes
         )
-        activate_msg.context["skill_id"] = self.skill_id
+        activate_msg.context = {**(activate_msg.context or {}), "skill_id": self.skill_id}
         self.bus.emit(activate_msg)
 
     def _present_memory(self, folder: str, memory_name: str, filter_cover: bool):
@@ -563,9 +581,9 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     # HANDLE STOP
     # ----------------------
-    def can_stop(self, message: Message) -> bool:
+    def can_stop(self, _message: Message) -> bool:
         """Tell the stop pipeline whether VR has anything running to stop."""
-        busy = bool(self.active_slideshow or self.audio_proc is not None)
+        busy = bool(self.active_slideshow or self.audio_active or self.audio_proc is not None)
         self.log.debug(f"VR: can_stop -> {busy}")
         return busy
 
