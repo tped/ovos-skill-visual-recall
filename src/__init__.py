@@ -190,7 +190,8 @@ class VisualRecallSkill(OVOSSkill):
             return
 
         total = len(audio_files)
-        self.speak_dialog("playing_audio", {"memory_name": memory_name}, wait=True)
+        dialog = "playing_audio_multi" if total > 1 else "playing_audio"
+        self.speak_dialog(dialog, {"memory_name": memory_name}, wait=True)
 
         self.audio_active = True
         try:
