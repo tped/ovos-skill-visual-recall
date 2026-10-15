@@ -2,7 +2,7 @@ from ovos_utils import classproperty
 from ovos_utils.process_utils import RuntimeRequirements
 from ovos_workshop.decorators import intent_handler
 from ovos_workshop.skills import OVOSSkill
-from ovos_bus_client.apis.ocp import OCPInterface
+# from ovos_bus_client.apis.ocp import OCPInterface
 from ovos_utils.ocp import MediaType, PlaybackType, MediaEntry
 from ovos_bus_client.message import Message, dig_for_message
 
@@ -76,7 +76,7 @@ class VisualRecallSkill(OVOSSkill):
         self.log_level = self.settings.get("log_level", "INFO")
 
         # Register OCP
-        self.ocp = OCPInterface(self.bus)
+        # self.ocp = OCPInterface(self.bus)
 
         # Register event for NTR hand-offs
         self.add_event("visual.recall.display", self.handle_display_request)
@@ -352,13 +352,16 @@ class VisualRecallSkill(OVOSSkill):
         show_images = bool(images)
         play_audio = bool(audio_files)
 
-        if audio_files and (images or filter_cover):
-            if images:
+        # Ask when there's a real choice (images AND audio), or when NTR handed off
+        # (the user hasn't asked for anything yet, so offer the extras once)
+        if (images and audio_files) or (filter_cover and (images or audio_files)):
+            if images and audio_files:
                 dialog = "mixed_media_prompt"
-                found = self._describe_media(len(images), len(audio_files), len(videos))
+            elif images:
+                dialog = "images_only_prompt"
             else:
                 dialog = "audio_only_prompt"
-                found = self._describe_media(0, len(audio_files), 0)
+            found = self._describe_media(len(images), len(audio_files), 0)
 
             reply = self.get_response(
                 dialog,
@@ -366,20 +369,22 @@ class VisualRecallSkill(OVOSSkill):
                 num_retries=1,
             )
             if self.stop_requested:
+                self._release_gui()
                 return
 
             choice = self._parse_media_choice(reply)
             self.log.info(f"VR: media choice reply={reply!r} -> {choice}")
 
-            if choice == "none":
-                self.speak("Okay.")
-                return
-            if choice == "unclear":
-                self.speak("I didn't catch that, so I'll leave it there.")
+            if choice in ("none", "unclear"):
+                if choice == "none":
+                    self.speak("Okay.")
+                else:
+                    self.speak("I didn't catch that, so I'll leave it there.")
+                self._release_gui()
                 return
 
             show_images = bool(images) and choice in ("images", "both")
-            play_audio = choice in ("audio", "both")
+            play_audio = bool(audio_files) and choice in ("audio", "both")
 
         if show_images:
             self._show_images(folder, memory_name, filter_cover=filter_cover, images=images)
@@ -390,6 +395,7 @@ class VisualRecallSkill(OVOSSkill):
         if videos and not self.stop_requested:
             self.speak("I also have a video memory but can't play it yet ... sorry")
 
+        self._release_gui()  # hand-offs leave NTR's cover up; let the screen return to idle
 
     def _show_images(self, folder: str, memory_name: str, filter_cover: bool = True, images=None):
         """Display unique images. If filter_cover is True, skips the specific 'cover.jpg' file."""
