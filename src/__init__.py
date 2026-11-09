@@ -268,7 +268,7 @@ class VisualRecallSkill(OVOSSkill):
         self.video_active = True
         try:
             self.gui["videoSource"] = "file://" + path
-            self.gui.show_page("VideoPlayer.qml", override_idle=True)
+            self.gui.show_page("VideoPlayer", override_idle=True)
             self.video_done.wait(timeout=1800)  # QML's done event, skip or stop ends it sooner
         finally:
             self.video_active = False
@@ -518,7 +518,7 @@ class VisualRecallSkill(OVOSSkill):
         try:
             self.gui.override_idle = False
             self.gui.remove_page("ImagePage")
-            self.gui.remove_page("VideoPlayer.qml")
+            self.gui.remove_page("VideoPlayer")
             self.gui.release()
         except Exception as e:
             self.log.warning(f"GUI release failed: {e}")
