@@ -12,6 +12,7 @@ import json
 import time
 import filecmp
 import subprocess
+import threading
 
 from .version import (
     VERSION_MAJOR,
@@ -38,10 +39,13 @@ CHOICE_IMAGES = {"see", "show", "look", "picture", "pictures", "image", "images"
 # "here" is a likely STT mishearing of "hear"
 CHOICE_AUDIO = {"hear", "here", "listen", "audio", "sound", "song", "music",
                 "recording", "recordings", "play"}
+# Choices for video playback
+CHOICE_VIDEO = {"watch", "video", "videos", "movie", "movies", "clip", "clips", "film"}
 
 class VisualRecallSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.video = None
         self.learning = True
 
     @classproperty
@@ -75,9 +79,6 @@ class VisualRecallSkill(OVOSSkill):
         self.settings.merge(DEFAULT_SETTINGS, new_only=True)
         self.log_level = self.settings.get("log_level", "INFO")
 
-        # Register OCP
-        # self.ocp = OCPInterface(self.bus)
-
         # Register event for NTR hand-offs
         self.add_event("visual.recall.display", self.handle_display_request)
 
@@ -91,6 +92,12 @@ class VisualRecallSkill(OVOSSkill):
         self.stop_requested = False
         self.audio_active = False  # True while a track queue is running
         self.skip_requested = False
+
+        self.video_active = False
+        self.video_done = threading.Event()
+        self.add_event("visual.recall.play_video", self.handle_play_video_test)
+        if self.gui:
+            self.gui.register_handler("visual.recall.video.done", self.handle_video_done)
 
         self.enabled = True
 
@@ -169,6 +176,9 @@ class VisualRecallSkill(OVOSSkill):
 
     @intent_handler("SkipTrack.intent")
     def handle_skip(self, _message):
+        if self.video_active:
+            self.video_done.set()
+            return
         if not self.audio_active:
             self.speak("Nothing is playing right now.")
             return
@@ -240,6 +250,30 @@ class VisualRecallSkill(OVOSSkill):
 
         self.log.info("VR: Audio playback finished.")
 
+    def handle_play_video_test(self, message):  # dev hook, run on its own thread
+        path = (message.data or {}).get("path") or ""
+        if path and os.path.isfile(path):
+            threading.Thread(target=self._play_video, args=(path,), daemon=True).start()
+        else:
+            self.log.warning(f"VR: play_video test hook got no usable path: {path!r}")
+
+    def handle_video_done(self, _message=None):
+        self.video_done.set()
+
+    def _play_video(self, path):
+        if not self.gui:
+            self.speak("I can't reach my display right now.")
+            return
+        self.video_done.clear()
+        self.video_active = True
+        try:
+            self.gui["videoSource"] = "file://" + path
+            self.gui.show_page("VideoPlayer.qml", override_idle=True)
+            self.video_done.wait(timeout=1800)  # QML's done event, skip or stop ends it sooner
+        finally:
+            self.video_active = False
+            self._release_gui()
+
     @intent_handler("MemoryPalace.intent")
     def handle_memory_palace_intent(self, message):
         if not self.enabled:
@@ -263,17 +297,20 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     @staticmethod
     def _parse_media_choice(reply):
-        """Turn the spoken reply into 'images', 'audio', 'both', 'none' or 'unclear'."""
+        """Turn the spoken reply into 'images', 'audio', 'video', 'both', 'none' or 'unclear'."""
         # Squeeze stretched STT output ("yesssss", "noooo") down to one letter
         text = re.sub(r"(.)\1{2,}", r"\1", (reply or "").lower())
         words = set(re.findall(r"[a-z']+", text))
         wants_images = bool(words & CHOICE_IMAGES)
         wants_audio = bool(words & CHOICE_AUDIO)
+        wants_video = bool(words & CHOICE_VIDEO)
 
-        if words & CHOICE_BOTH or (wants_images and wants_audio):
+        if words & CHOICE_BOTH or (wants_images + wants_audio + wants_video) >= 2:
             return "both"
         if wants_images:
             return "images"
+        if wants_video:
+            return "video"
         if wants_audio:
             return "audio"
         if words & CHOICE_NONE:
@@ -352,17 +389,21 @@ class VisualRecallSkill(OVOSSkill):
 
         show_images = bool(images)
         play_audio = bool(audio_files)
+        play_video = bool(videos)
 
-        # Ask when there's a real choice (images AND audio), or when NTR handed off
-        # (the user hasn't asked for anything yet, so offer the extras once)
-        if (images and audio_files) or (filter_cover and (images or audio_files)):
-            if images and audio_files:
+        # Ask when there's a real choice (more than one kind of media), or when NTR
+        # handed off (the user hasn't asked for anything yet, so offer the extras once)
+        kinds = sum(bool(x) for x in (images, audio_files, videos))
+        if kinds > 1 or (filter_cover and kinds):
+            if kinds > 1:
                 dialog = "mixed_media_prompt"
             elif images:
                 dialog = "images_only_prompt"
-            else:
+            elif audio_files:
                 dialog = "audio_only_prompt"
-            found = self._describe_media(len(images), len(audio_files), 0)
+            else:
+                dialog = "video_only_prompt"
+            found = self._describe_media(len(images), len(audio_files), len(videos))
 
             reply = self.get_response(
                 dialog,
@@ -386,6 +427,7 @@ class VisualRecallSkill(OVOSSkill):
 
             show_images = bool(images) and choice in ("images", "both")
             play_audio = bool(audio_files) and choice in ("audio", "both")
+            play_video = bool(videos) and choice in ("video", "both")
 
         if show_images:
             self._show_images(folder, memory_name, filter_cover=filter_cover, images=images)
@@ -393,8 +435,11 @@ class VisualRecallSkill(OVOSSkill):
         if play_audio and not self.stop_requested:
             self._play_audio(folder, memory_name)
 
-        if videos and not self.stop_requested:
-            self.speak("I also have a video memory but can't play it yet ... sorry")
+        if play_video and not self.stop_requested:
+            for video_path in videos:
+                if self.stop_requested:
+                    break
+                self._play_video(video_path)
 
         self._release_gui()  # hand-offs leave NTR's cover up; let the screen return to idle
 
@@ -473,6 +518,7 @@ class VisualRecallSkill(OVOSSkill):
         try:
             self.gui.override_idle = False
             self.gui.remove_page("ImagePage")
+            self.gui.remove_page("VideoPlayer.qml")
             self.gui.release()
         except Exception as e:
             self.log.warning(f"GUI release failed: {e}")
@@ -590,7 +636,7 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     def can_stop(self, _message: Message) -> bool:
         """Tell the stop pipeline whether VR has anything running to stop."""
-        busy = bool(self.active_slideshow or self.audio_active or self.audio_proc is not None)
+        busy = bool(self.active_slideshow or self.audio_active or self.video_active or self.audio_proc is not None)
         self.log.debug(f"VR: can_stop -> {busy}")
         return busy
 
@@ -603,6 +649,11 @@ class VisualRecallSkill(OVOSSkill):
 
         if self.active_slideshow:
             self.active_slideshow = False
+            self._release_gui()
+            stopped = True
+
+        if self.video.active:
+            self.video_done.set()
             self._release_gui()
             stopped = True
 

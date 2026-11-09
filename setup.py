@@ -48,7 +48,9 @@ def get_requirements(requirements_filename: str):
 
 
 def find_resource_files():
-    resource_base_dirs = ("locale", "intents", "dialog", "vocab", "regex", "ui")
+        # TPed was here - Adding Video playback
+        resource_base_dirs = ("locale", "intents", "dialog", "vocab", "regex", "ui", "gui")
+        # resource_base_dirs = ("locale", "intents", "dialog", "vocab", "regex", "ui")
     package_data = ["*.json"]
     for res in resource_base_dirs:
         if path.isdir(path.join(BASE_PATH, res)):
