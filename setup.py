@@ -46,11 +46,10 @@ def get_requirements(requirements_filename: str):
     requirements = [r.strip() for r in requirements if r.strip() and not r.strip().startswith("#")]
     return requirements
 
-
 def find_resource_files():
-        # TPed was here - Adding Video playback
-        resource_base_dirs = ("locale", "intents", "dialog", "vocab", "regex", "ui", "gui")
-        # resource_base_dirs = ("locale", "intents", "dialog", "vocab", "regex", "ui")
+
+    resource_base_dirs = ("locale", "intents", "dialog", "vocab", "regex", "ui")
+
     package_data = ["*.json"]
     for res in resource_base_dirs:
         if path.isdir(path.join(BASE_PATH, res)):
