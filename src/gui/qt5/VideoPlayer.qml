@@ -11,9 +11,11 @@ Mycroft.Delegate {
         autoPlay: true
         fillMode: VideoOutput.PreserveAspectFit
         onStopped: triggerGuiEvent("visual.recall.video.done", {})
-        onError: {
-            console.log("VideoPlayer error: " + errorString)
-            triggerGuiEvent("visual.recall.video.done", {})
+        onErrorChanged: {
+            if (error !== MediaPlayer.NoError) {
+                console.log("VideoPlayer error: " + errorString)
+                triggerGuiEvent("visual.recall.video.done", {})
+            }
         }
     }
 }
