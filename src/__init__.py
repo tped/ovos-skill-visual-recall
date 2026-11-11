@@ -31,8 +31,8 @@ DEFAULT_SETTINGS = {
 }
 
 # Words used to interpret the reply to "see the images, hear the audio, or both?"
-CHOICE_BOTH = {"both", "everything"}
-CHOICE_YES = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please"}
+CHOICE_BOTH = {"both", "everything", "all"}
+CHOICE_YES = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "yesss"}
 CHOICE_NONE = {"no", "nope", "nah", "nothing", "none", "neither", "cancel", "skip"}
 CHOICE_IMAGES = {"see", "show", "look", "picture", "pictures", "image", "images",
                  "photo", "photos", "slideshow"}
@@ -45,7 +45,6 @@ CHOICE_VIDEO = {"watch", "video", "videos", "movie", "movies", "clip", "clips", 
 class VisualRecallSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.video = None
         self.learning = True
 
     @classproperty
@@ -92,6 +91,8 @@ class VisualRecallSkill(OVOSSkill):
         self.stop_requested = False
         self.audio_active = False  # True while a track queue is running
         self.skip_requested = False
+        self.presenting = False  # True for the whole _present_memory flow, including the prompt
+        self.stop_event = threading.Event()  # set by stop(); lets sleeping loops wake up immediately
 
         self.video_active = False
         self.video_done = threading.Event()
@@ -372,7 +373,18 @@ class VisualRecallSkill(OVOSSkill):
         self.bus.emit(activate_msg)
 
     def _present_memory(self, folder: str, memory_name: str, filter_cover: bool):
-        """Shared by the standalone intent and the NTR hand-off."""
+        """Guard around the real flow so 'presenting' can never get stuck True."""
+        if self.presenting:
+            self.log.warning("VR: already presenting a memory, ignoring new request")
+            return
+        self.presenting = True
+        self.stop_event.clear()
+        try:
+            self._present_memory_flow(folder, memory_name, filter_cover)
+        finally:
+            self.presenting = False
+
+    def _present_memory_flow(self, folder: str, memory_name: str, filter_cover: bool):
         self.stop_requested = False
         self._activate_for_converse()
 
@@ -436,6 +448,8 @@ class VisualRecallSkill(OVOSSkill):
             self._play_audio(folder, memory_name)
 
         if play_video and not self.stop_requested:
+            dialog = "playing_video_multi" if len(videos) > 1 else "playing_video"
+            self.speak_dialog(dialog, {"memory_name": memory_name}, wait=True)
             for video_path in videos:
                 if self.stop_requested:
                     break
@@ -495,7 +509,8 @@ class VisualRecallSkill(OVOSSkill):
             self.log.info(f"Displaying image {idx}/{image_count}: {img_path}")
             self.gui.show_image(img_path, fill='PreserveAspectFit', override_idle=remaining_time)
 
-            time.sleep(self.display_time)
+            if self.stop_event.wait(self.display_time):  # True means stop() fired during the wait
+                break
 
             # Add chatter every few images
             if image_count > 1 and idx < image_count:
@@ -504,11 +519,13 @@ class VisualRecallSkill(OVOSSkill):
                     time.sleep(0.5)
 
         self.log.info("Slideshow finished. Cleaning up.")
+        was_stopped = self.stop_event.is_set()
 
         # Release GUI after images
         self._release_gui()
 
-        self.speak_dialog("end_of_images", {"memory_name": memory_name})
+        if not was_stopped:
+            self.speak_dialog("end_of_images", {"memory_name": memory_name})
 
     def _release_gui(self):
         """Safely release GUI to prevent player lockout."""
@@ -636,7 +653,7 @@ class VisualRecallSkill(OVOSSkill):
     # ----------------------
     def can_stop(self, _message: Message) -> bool:
         """Tell the stop pipeline whether VR has anything running to stop."""
-        busy = bool(self.active_slideshow or self.audio_active or self.video_active or self.audio_proc is not None)
+        busy = bool(self.presenting or self.active_slideshow or self.audio_active or self.video_active or self.audio_proc is not None)
         self.log.debug(f"VR: can_stop -> {busy}")
         return busy
 
@@ -646,21 +663,29 @@ class VisualRecallSkill(OVOSSkill):
 
         # Tell any in-progress memory palace flow not to move on to its next stage
         self.stop_requested = True
+        self.stop_event.set()
 
         if self.active_slideshow:
             self.active_slideshow = False
             self._release_gui()
             stopped = True
 
-        if self.video.active:
+        if self.video_active:
             self.video_done.set()
             self._release_gui()
             stopped = True
 
         proc = self.audio_proc
         if proc is not None:
-            proc.terminate()
-            self.audio_proc = None
+            if proc is not None:
+                proc.terminate()
+                self.audio_proc = None
+                stopped = True
+
+        if self.audio_active:  # between tracks or mid-announcement: no mpv, but the loop is ending
+            stopped = True
+
+        if self.presenting:  # e.g. waiting on the media prompt; stop_requested ends the flow
             stopped = True
 
         return stopped
