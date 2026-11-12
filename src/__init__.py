@@ -13,6 +13,7 @@ import time
 import filecmp
 import subprocess
 import threading
+from pathlib import Path
 
 from .version import (
     VERSION_MAJOR,
@@ -253,7 +254,7 @@ class VisualRecallSkill(OVOSSkill):
 
     def handle_play_video_test(self, message):  # dev hook, run on its own thread
         path = (message.data or {}).get("path") or ""
-        if path and os.path.isfile(path):
+        if path and Path(path).is_file():
             threading.Thread(target=self._play_video, args=(path,), daemon=True).start()
         else:
             self.log.warning(f"VR: play_video test hook got no usable path: {path!r}")
@@ -268,7 +269,7 @@ class VisualRecallSkill(OVOSSkill):
         self.video_done.clear()
         self.video_active = True
         try:
-            self.gui["videoSource"] = "file://" + path
+            self.gui["videoSource"] = Path(os.path.abspath(path)).as_uri()
             self.gui.show_page("VideoPlayer", override_idle=True)
             self.video_done.wait(timeout=1800)  # QML's done event, skip or stop ends it sooner
         finally:
@@ -379,8 +380,12 @@ class VisualRecallSkill(OVOSSkill):
             return
         self.presenting = True
         self.stop_event.clear()
+        # noinspection PyBroadException
         try:
             self._present_memory_flow(folder, memory_name, filter_cover)
+        except Exception:
+            self.log.exception("VR: presentation failed, releasing the screen")
+            self._release_gui()
         finally:
             self.presenting = False
 
@@ -445,6 +450,7 @@ class VisualRecallSkill(OVOSSkill):
             self._show_images(folder, memory_name, filter_cover=filter_cover, images=images)
 
         if play_audio and not self.stop_requested:
+            self._show_cover(folder)
             self._play_audio(folder, memory_name)
 
         if play_video and not self.stop_requested:
@@ -539,6 +545,15 @@ class VisualRecallSkill(OVOSSkill):
             self.gui.release()
         except Exception as e:
             self.log.warning(f"GUI release failed: {e}")
+
+    def _show_cover(self, folder: str):
+        """Put the memory's cover image back on screen (held until the next _release_gui)."""
+        if not self.gui:
+            return
+        for img in self.get_media_files(folder):
+            if os.path.splitext(os.path.basename(img))[0].lower().strip() == "cover":
+                self.gui.show_image(img, fill='PreserveAspectFit', override_idle=True)
+                return
 
     def _file2entry(self, file_path: str, media_type: MediaType):
         """Convert a file path into a MediaEntry for OCP playback."""
@@ -664,6 +679,7 @@ class VisualRecallSkill(OVOSSkill):
         # Tell any in-progress memory palace flow not to move on to its next stage
         self.stop_requested = True
         self.stop_event.set()
+        self.bus.emit(Message("mycroft.audio.speech.stop"))
 
         if self.active_slideshow:
             self.active_slideshow = False

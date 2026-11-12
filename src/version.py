@@ -1,5 +1,5 @@
 VERSION_MAJOR = 1
 VERSION_MINOR = 3
-VERSION_BUILD = 7
+VERSION_BUILD = 8
 VERSION_ALPHA = 1
-VERSION_TAG = "Version 1.3.7 - Implement Video playback! #7 - Single braces!"
+VERSION_TAG = "Version 1.3.8 - Implement Video playback! #8 - stop handling, video intro & show cover"
