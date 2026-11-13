@@ -42,6 +42,8 @@ CHOICE_AUDIO = {"hear", "here", "listen", "audio", "sound", "song", "music",
                 "recording", "recordings", "play"}
 # Choices for video playback
 CHOICE_VIDEO = {"watch", "video", "videos", "movie", "movies", "clip", "clips", "film"}
+# Words that skip the current track or video when heard during playback
+SKIP_WORDS = {"skip", "next"}
 
 class VisualRecallSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
@@ -189,6 +191,20 @@ class VisualRecallSkill(OVOSSkill):
         if proc is not None:
             proc.terminate()  # during an announcement there's no mpv; the flag does the work
 
+    def converse(self, message: Message = None) -> bool:
+        """Catch skip words during playback, even when STT adds noise ('hahaha skip')."""
+        if not (self.audio_active or self.video_active):
+            return False
+        data = (message.data if message else None) or {}
+        utterances = data.get("utterances") or []
+        words = set()
+        for utt in utterances:
+            words |= set(re.findall(r"[a-z']+", utt.lower()))
+        if words & SKIP_WORDS:
+            self.handle_skip(message)
+            return True  # consumed, so it never falls through to the persona
+        return False
+
     # ----------------------
     # Audio Playback HELPERS
     # ----------------------
@@ -262,7 +278,7 @@ class VisualRecallSkill(OVOSSkill):
     def handle_video_done(self, _message=None):
         self.video_done.set()
 
-    def _play_video(self, path):
+    def _play_video(self, path, release=True):
         if not self.gui:
             self.speak("I can't reach my display right now.")
             return
@@ -274,7 +290,8 @@ class VisualRecallSkill(OVOSSkill):
             self.video_done.wait(timeout=1800)  # QML's done event, skip or stop ends it sooner
         finally:
             self.video_active = False
-            self._release_gui()
+            if release:
+                self._release_gui()
 
     @intent_handler("MemoryPalace.intent")
     def handle_memory_palace_intent(self, message):
@@ -459,7 +476,7 @@ class VisualRecallSkill(OVOSSkill):
             for video_path in videos:
                 if self.stop_requested:
                     break
-                self._play_video(video_path)
+                self._play_video(video_path, release=False)
 
         self._release_gui()  # hand-offs leave NTR's cover up; let the screen return to idle
 
@@ -527,8 +544,10 @@ class VisualRecallSkill(OVOSSkill):
         self.log.info("Slideshow finished. Cleaning up.")
         was_stopped = self.stop_event.is_set()
 
-        # Release GUI after images
-        self._release_gui()
+        # DO NOT Release GUI after images, we'll let _present_memory_flow do it when done
+        # self._release_gui()
+        # DO set active_slideshow to False - indicate end of images
+        self.active_slideshow = False
 
         if not was_stopped:
             self.speak_dialog("end_of_images", {"memory_name": memory_name})
@@ -591,7 +610,7 @@ class VisualRecallSkill(OVOSSkill):
 
     @staticmethod
     def get_video_files(folder: str):
-        valid_ext = ('.mp4', '.mkv', '.avi', '.mov', '.webm')
+        valid_ext = ('.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v')
         return [
             os.path.join(folder, f)
             for f in sorted(os.listdir(folder))
