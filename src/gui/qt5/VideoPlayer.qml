@@ -10,7 +10,11 @@ Mycroft.Delegate {
         source: sessionData.videoSource
         autoPlay: true
         fillMode: VideoOutput.PreserveAspectFit
-        onStopped: triggerGuiEvent("visual.recall.video.done", {})
+        onStatusChanged: {
+            if (status === MediaPlayer.EndOfMedia) {
+                triggerGuiEvent("visual.recall.video.done", {})
+            }
+        }
         onErrorChanged: {
             if (error !== MediaPlayer.NoError) {
                 console.log("VideoPlayer error: " + errorString)

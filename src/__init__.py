@@ -276,6 +276,7 @@ class VisualRecallSkill(OVOSSkill):
             self.log.warning(f"VR: play_video test hook got no usable path: {path!r}")
 
     def handle_video_done(self, _message=None):
+        self.log.info("VR: video.done event received")
         self.video_done.set()
 
     def _play_video(self, path, release=True):
@@ -285,6 +286,8 @@ class VisualRecallSkill(OVOSSkill):
         self.video_done.clear()
         self.video_active = True
         try:
+            for page in ("SYSTEM_ImageFrame", "ImagePage"):  # leftovers from the slideshow/cover
+                self.gui.remove_page(page)
             self.gui["videoSource"] = Path(os.path.abspath(path)).as_uri()
             self.gui.show_page("VideoPlayer", override_idle=True)
             self.video_done.wait(timeout=1800)  # QML's done event, skip or stop ends it sooner
@@ -559,7 +562,7 @@ class VisualRecallSkill(OVOSSkill):
             return
         try:
             self.gui.override_idle = False
-            self.gui.remove_page("ImagePage")
+            self.gui.remove_page("SYSTEM_ImageFrame")
             self.gui.remove_page("VideoPlayer")
             self.gui.release()
         except Exception as e:
