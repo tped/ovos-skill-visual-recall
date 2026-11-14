@@ -14,6 +14,7 @@ import filecmp
 import subprocess
 import threading
 from pathlib import Path
+from rapidfuzz import fuzz
 
 from .version import (
     VERSION_MAJOR,
@@ -33,7 +34,7 @@ DEFAULT_SETTINGS = {
 
 # Words used to interpret the reply to "see the images, hear the audio, or both?"
 CHOICE_BOTH = {"both", "everything", "all"}
-CHOICE_YES = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "yesss"}
+CHOICE_YES = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please"}
 CHOICE_NONE = {"no", "nope", "nah", "nothing", "none", "neither", "cancel", "skip"}
 CHOICE_IMAGES = {"see", "show", "look", "picture", "pictures", "image", "images",
                  "photo", "photos", "slideshow"}
@@ -44,6 +45,8 @@ CHOICE_AUDIO = {"hear", "here", "listen", "audio", "sound", "song", "music",
 CHOICE_VIDEO = {"watch", "video", "videos", "movie", "movies", "clip", "clips", "film"}
 # Words that skip the current track or video when heard during playback
 SKIP_WORDS = {"skip", "next"}
+# fuzzy yes/no help when needed
+NEAR_MISS_THRESHOLD = 75  # same rule as NTR: "yess" -> "yes"
 
 class VisualRecallSkill(OVOSSkill):
     def __init__(self, *args, **kwargs):
@@ -344,6 +347,14 @@ class VisualRecallSkill(OVOSSkill):
         self._present_memory(folder, self._flip_pronouns(memory_name), filter_cover=False)
 
     # ----------------------
+    # ALL SORTS OF HELPERS
+    # ----------------------
+    @staticmethod
+    def _near(tokens, words, anchor):
+        """True if a token is an exact vocab word or a near-miss of the anchor (same rule as NTR)."""
+        return any(t in words or fuzz.ratio(t, anchor) >= NEAR_MISS_THRESHOLD for t in tokens)
+
+    # ----------------------
     # MEDIA DISPLAY HELPERS
     # ----------------------
     @staticmethod
@@ -366,7 +377,7 @@ class VisualRecallSkill(OVOSSkill):
             return "audio"
         if words & CHOICE_NONE:
             return "none"
-        if words & CHOICE_YES:
+        if VisualRecallSkill._near(words, CHOICE_YES, "yes"):
             return "both"
         return "unclear"
 
