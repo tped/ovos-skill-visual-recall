@@ -96,6 +96,7 @@ class VisualRecallSkill(OVOSSkill):
         self.skip_requested = False
         self.presenting = False  # True for the whole _present_memory flow, including the prompt
         self.stop_event = threading.Event()  # set by stop(); lets sleeping loops wake up immediately
+        self.skip_event = threading.Event()  # set by "skip" during the slideshow; ends the current image early
 
         self.video_active = False
         self.video_done = threading.Event()
@@ -140,13 +141,35 @@ class VisualRecallSkill(OVOSSkill):
     def my_setting(self):
         return self.settings.get("my_setting", "default_value")
 
+    @staticmethod
+    def _flip_pronouns(text):
+        """Flip third-person or user-centric pronouns to first-person for MeePi."""
+        if not text:
+            return ""
+        # Pronoun mapping for the persona flip
+        swaps = {
+            r"\byour\b": "my",  # User says "your wedding" -> MeePi says "my wedding"
+            r"\bhis\b": "my",  # Title says "his wedding" -> MeePi says "my wedding"
+            r"\bher\b": "my",  # Title says "her wedding" -> MeePi says "my wedding"
+            r"\bhe\b": "I",  # Title says "he went" -> MeePi says "I went"
+            r"\bshe\b": "I",
+            r"\bhim\b": "me"
+        }
+
+        result = text
+        for pattern, replacement in swaps.items():
+            result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+
+        # Cleanup whitespace
+        return re.sub(r'\s+', ' ', result).strip()
+
     # -----------------------
     # REQUEST HANDLER for NTR
     # -----------------------
     def handle_display_request(self, message: Message):
         data = message.data or {}
         media_path = data.get("media_path") or ""
-        memory_name = data.get("title") or "this memory"
+        memory_name = self._flip_pronouns(data.get("title") or "this memory")
 
         if not media_path or not os.path.exists(media_path):
             self.log.error(f"visual-recall: no media found at {media_path}")
@@ -176,12 +199,15 @@ class VisualRecallSkill(OVOSSkill):
             return
 
         self.stop_requested = False
-        self._play_audio(folder, memory_name)
+        self._play_audio(folder, self._flip_pronouns(memory_name))
 
     @intent_handler("SkipTrack.intent")
     def handle_skip(self, _message):
         if self.video_active:
             self.video_done.set()
+            return
+        if self.active_slideshow:
+            self.skip_event.set()  # ends the current image's wait early
             return
         if not self.audio_active:
             self.speak("Nothing is playing right now.")
@@ -193,13 +219,15 @@ class VisualRecallSkill(OVOSSkill):
 
     def converse(self, message: Message = None) -> bool:
         """Catch skip words during playback, even when STT adds noise ('hahaha skip')."""
-        if not (self.audio_active or self.video_active):
+        if not (self.audio_active or self.video_active or self.active_slideshow):
             return False
         data = (message.data if message else None) or {}
         utterances = data.get("utterances") or []
         words = set()
         for utt in utterances:
-            words |= set(re.findall(r"[a-z']+", utt.lower()))
+            tokens = re.findall(r"[a-z']+", utt.lower())
+            if len(tokens) <= 4:  # real commands are short; echoed dialog sentences are not
+                words |= set(tokens)
         if words & SKIP_WORDS:
             self.handle_skip(message)
             return True  # consumed, so it never falls through to the persona
@@ -303,6 +331,7 @@ class VisualRecallSkill(OVOSSkill):
             return
 
         memory_name = message.data.get("query")
+
         if not memory_name:
             self.speak("I didn't catch the memory you're looking for.")
             return
@@ -312,7 +341,7 @@ class VisualRecallSkill(OVOSSkill):
             self.speak(f"I couldn't find any media for {memory_name}.")
             return
 
-        self._present_memory(folder, memory_name, filter_cover=False)
+        self._present_memory(folder, self._flip_pronouns(memory_name), filter_cover=False)
 
     # ----------------------
     # MEDIA DISPLAY HELPERS
@@ -533,9 +562,11 @@ class VisualRecallSkill(OVOSSkill):
             if not os.path.exists(img_path):
                 continue
             self.log.info(f"Displaying image {idx}/{image_count}: {img_path}")
+            self.skip_event.clear()  # a skip said during the previous chatter shouldn't carry over
             self.gui.show_image(img_path, fill='PreserveAspectFit', override_idle=remaining_time)
 
-            if self.stop_event.wait(self.display_time):  # True means stop() fired during the wait
+            self.skip_event.wait(self.display_time)  # a skip ends the wait early
+            if self.stop_event.is_set():  # stop() fired during the wait
                 break
 
             # Add chatter every few images
@@ -701,6 +732,7 @@ class VisualRecallSkill(OVOSSkill):
         # Tell any in-progress memory palace flow not to move on to its next stage
         self.stop_requested = True
         self.stop_event.set()
+        self.skip_event.set()  # wake a sleeping slideshow so it sees stop_event right away
         self.bus.emit(Message("mycroft.audio.speech.stop"))
 
         if self.active_slideshow:
