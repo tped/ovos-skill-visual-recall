@@ -204,6 +204,35 @@ class VisualRecallSkill(OVOSSkill):
         self.stop_requested = False
         self._play_audio(folder, self._flip_pronouns(memory_name))
 
+    @intent_handler("PlayVideo.intent")
+    def handle_play_video_intent(self, message):
+        if not self.enabled:
+            self.speak("My visual recall isn't available right now.")
+            return
+
+        memory_name = message.data.get("query")
+        spoken_name = self._flip_pronouns(memory_name)
+        folder = self.find_matching_folder(memory_name)
+        if not folder:
+            self.speak(f"I couldn't find any videos for {spoken_name}.")
+            return
+
+        videos = self.get_video_files(folder)
+        if not videos:
+            self.speak(f"I don't have any videos for {spoken_name}.")
+            return
+
+        self.stop_requested = False
+        dialog = "playing_video_multi" if len(videos) > 1 else "playing_video"
+        self.speak_dialog(dialog, {"memory_name": spoken_name}, wait=True)
+        try:
+            for video_path in videos:
+                if self.stop_requested:
+                    break
+                self._play_video(video_path, release=False)
+        finally:
+            self._release_gui()
+
     @intent_handler("SkipTrack.intent")
     def handle_skip(self, _message):
         if self.video_active:
